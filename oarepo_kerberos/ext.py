@@ -1,33 +1,53 @@
 import base64
-from os import environ
 import flask_login
 from flask import request
 from flask_gssapi import GSSAPI
 
 from .resources.negotiate import NegotiateAuthentication
-from .wsgi import OarepoKerberosMiddleware
 from invenio_accounts.models import UserIdentity
-
+from .cli.cli import kerberos
 
 class OarepoKerberosExt(object):
+    """
+        OarepoKerberosExt is an extension for Flask applications to handle
+        Kerberos authentication using GSSAPI. It initializes the GSSAPI,
+        manages user authentication, and configures CLI commands for Kerberos.
+    """
     def __init__(self, app=None):
         self.gssapi = None
         if app:
             self.init_app(app)
 
     def init_app(self, app):
+        """
+        Sets up flask extension.
+
+        Registering extension, initializing GSSAPI, adding lifecycle hooks, registering Kerberos CLI
+        """
         app.extensions['oarepo-kerberos'] = self
         app.extensions['oarepo-gssapi'] = GSSAPI(app)
         self.gssapi = app.extensions['oarepo-gssapi']
+
+        # Main handling of authentication
         app.before_request(self.before_request)
         app.after_request(self.after_request)
 
+        app.cli.add_command(kerberos)
+
 
     def before_request(self):
-        print(request)
+        """
+        Executed before each request. Authenticates the user via GSSAPI.
+        If succeeds, user is logged in.
+        """
+        #print(request)
         username, out_token = self.gssapi.authenticate()
         if username:
-            identity = UserIdentity.query.filter(UserIdentity.id==username,UserIdentity.method=='kerberos',).one_or_none()
+            identity = UserIdentity.query.filter(
+                UserIdentity.id==username,
+                UserIdentity.method=='kerberos',
+            ).one_or_none()
+
             if identity and flask_login.login_user(identity.user):
                 print(f"User {username} authenticated and logged in.")
             else:
@@ -37,9 +57,14 @@ class OarepoKerberosExt(object):
         request.kerberos_out_token = out_token
 
     def after_request(self, response):
+        """
+        Executed after each request. If Kerberos authentication was used,
+        adds the 'WWW-Authenticate' header with the Kerberos token to the response.
+        """
         #print(response)
         if request.kerberos_out_token:
             b64_token = base64.b64encode(request.kerberos_out_token).decode('utf-8')
             auth_data = 'Negotiate {0}'.format(b64_token)
             response.headers['WWW-Authenticate'] = auth_data
+
         return response
