@@ -58,11 +58,7 @@ def remove_mapping(email, kerberos_id):
     UserIdentity.delete_by_external_id(method="kerberos", external_id=kerberos_id)
     db.session.commit()
 
-    deleted_rows = UserIdentity.query.filter_by(id=kerberos_id, id_user=user.id, method="kerberos").count()
-    if deleted_rows == 0:
-        click.echo(f"Mapping removed: {email} -> {kerberos_id}")
-    else:
-        click.echo(f"No mapping found for {email} with Kerberos ID {kerberos_id}.")
+    click.echo(f"Mapping removed: {email} -> {kerberos_id}")
 
 @mapping.command('get')
 @click.option('--email', default=None, help="Filter by email.")
