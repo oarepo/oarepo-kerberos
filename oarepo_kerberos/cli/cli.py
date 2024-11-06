@@ -1,4 +1,6 @@
 import click
+from invenio_db import db
+from invenio_accounts.models import UserIdentity, User
 
 """
 invenio kerberos mapping add <email> <kerberos id>
@@ -33,8 +35,17 @@ def remove_mapping(email, kerberos_id):
 @click.option('--email', default=None, help="Filter by email.")
 def get_mapping(email):
     """List Kerberos mappings."""
-    # TODO
+    query = db.session.query(User._email, UserIdentity.id).join(
+        UserIdentity, User.id == UserIdentity.id_user
+    )
     if email:
-        click.echo(f"Listing mapping for: {email}")
+        query = query.filter(User._email == email)
+
+    results = query.all()
+
+    if results:
+        print("Output format: email -> kerberos id")
+        for user_email, kerberos_id in results:
+            click.echo(f"{user_email} -> {kerberos_id}")
     else:
-        click.echo("Listing all mappings")
+        click.echo("No mappings found.")
