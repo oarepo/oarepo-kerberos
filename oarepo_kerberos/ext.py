@@ -1,6 +1,6 @@
 import base64
 import flask_login
-from flask import request
+from flask import request, g
 from flask_gssapi import GSSAPI
 
 from .resources.negotiate import NegotiateAuthentication
@@ -40,7 +40,7 @@ class OarepoKerberosExt(object):
         Executed before each request. Authenticates the user via GSSAPI.
         If succeeds, user is logged in.
         """
-        #print(request)
+        print(request)
         username, out_token = self.gssapi.authenticate()
         if username:
             identity = UserIdentity.query.filter(
@@ -54,16 +54,18 @@ class OarepoKerberosExt(object):
                 print("No matching identity found for Kerberos user.")
                 raise NegotiateAuthentication(403)
 
-        request.kerberos_out_token = out_token
+        #request.kerberos_out_token = out_token
+        g.kerberos_out_token = out_token
 
     def after_request(self, response):
         """
         Executed after each request. If Kerberos authentication was used,
         adds the 'WWW-Authenticate' header with the Kerberos token to the response.
         """
-        #print(response)
-        if request.kerberos_out_token:
-            b64_token = base64.b64encode(request.kerberos_out_token).decode('utf-8')
+        print(response)
+        if hasattr(g, 'kerberos_out_token') and g.kerberos_out_token:
+            print("got out token")
+            b64_token = base64.b64encode(g.kerberos_out_token).decode('utf-8')
             auth_data = 'Negotiate {0}'.format(b64_token)
             response.headers['WWW-Authenticate'] = auth_data
 
