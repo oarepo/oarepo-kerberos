@@ -29,13 +29,14 @@ def add_mapping(email, kerberos_id):
         click.echo(f"Error: User with email {email} not found.")
         return
 
-    existing_mapping = UserIdentity.get_user(method="kerberos",external_id=kerberos_id)
+    realm = kerberos_id.split("@")[-1]
+    existing_mapping = UserIdentity.get_user(method=f"krb-{realm}",external_id=kerberos_id)
     if existing_mapping:
         click.echo(f"Error: Mapping to kerberos {kerberos_id} already exists.")
         return
 
     try:
-       UserIdentity.create(user=user, method="kerberos", external_id=kerberos_id)
+       UserIdentity.create(user=user, method=f"krb-{realm}", external_id=kerberos_id)
        db.session.commit()
        click.echo(f"Mapping added: {email} -> {kerberos_id}")
     except AlreadyLinkedError:
@@ -55,7 +56,8 @@ def remove_mapping(email, kerberos_id):
         click.echo(f"Error: User with email {email} not found.")
         return
 
-    UserIdentity.delete_by_external_id(method="kerberos", external_id=kerberos_id)
+    realm = kerberos_id.split("@")[-1]
+    UserIdentity.delete_by_external_id(method=f"krb-{realm}", external_id=kerberos_id)
     db.session.commit()
 
     click.echo(f"Mapping removed: {email} -> {kerberos_id}")
