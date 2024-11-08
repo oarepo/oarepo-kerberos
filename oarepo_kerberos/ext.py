@@ -43,9 +43,10 @@ class OarepoKerberosExt(object):
         print(request)
         username, out_token = self.gssapi.authenticate()
         if username:
+            realm = username.split("@")[-1]
             identity = UserIdentity.query.filter(
                 UserIdentity.id==username,
-                UserIdentity.method=='kerberos',
+                UserIdentity.method==f'krb-{realm}',
             ).one_or_none()
 
             if identity and flask_login.login_user(identity.user):
