@@ -1,9 +1,19 @@
 import os
-
+import time
+from datetime import datetime
 import pytest
+
+from werkzeug.serving import make_server
+import threading # for creating running server
+
 from invenio_app.factory import create_api as _create_api
-from invenio_users_resources.records import UserAggregate
+from invenio_accounts.models import UserIdentity, User
+from invenio_db import db as _invenio_db
+
 from requests_kerberos import HTTPKerberosAuth, REQUIRED, OPTIONAL, DISABLED
+import logging
+
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
 @pytest.fixture(scope='module', autouse=True)
 def set_kerberos_env():
@@ -13,34 +23,6 @@ def set_kerberos_env():
 
     del os.environ['KRB5_KTNAME']
 
-@pytest.fixture(scope='module')
-def app_config(app_config):
-    app_config['GSSAPI_HOSTNAME'] = 'localhost'
-
-    app_config['SEARCH_INDEXES'] = {}
-    app_config["SEARCH_HOSTS"] = [
-        {
-            "host": os.environ.get("OPENSEARCH_HOST", "localhost"),
-            "port": os.environ.get("OPENSEARCH_PORT", "9400"),
-        }
-    ]
-    app_config["CACHE_TYPE"] = "redis"
-    app_config["INVENIO_CACHE_TYPE"] = "redis"
-    app_config["CACHE_REDIS_URL"] = (
-        f'redis://{os.environ.get("INVENIO_REDIS_HOST", "127.0.0.1")}:'
-        f'{os.environ.get("INVENIO_REDIS_PORT", "6579")}/'
-        f'{os.environ.get("INVENIO_REDIS_CACHE_DB", "0")}')
-    app_config["ACCOUNTS_SESSION_REDIS_URL"] = (
-        f'redis://{os.environ.get("INVENIO_REDIS_HOST", "127.0.0.1")}:'
-        f'{os.environ.get("INVENIO_REDIS_PORT", "6579")}/'
-        f'{os.environ.get("INVENIO_REDIS_SESSION_DB", "1")}')
-    app_config["COMMUNITIES_IDENTITIES_CACHE_REDIS_URL"] = (
-        f'redis://{os.environ.get("INVENIO_REDIS_HOST", "127.0.0.1")}:'
-        f'{os.environ.get("INVENIO_REDIS_PORT", "6579")}/'
-        f'{os.environ.get("INVENIO_REDIS_COMMUNITIES_CACHE_DB", "3")}')
-
-    app_config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:?check_same_thread=False"
-    return app_config
 
 @pytest.fixture(scope="module")
 def extra_entry_points():
@@ -53,33 +35,26 @@ def extra_entry_points():
         ]
     }
 
+@pytest.fixture(scope='module')
+def app_config(app_config):
+    app_config['GSSAPI_HOSTNAME'] = 'localhost'
+
+    app_config['SEARCH_INDEXES'] = {}
+    app_config["SEARCH_HOSTS"] = [
+        {
+            "host": os.environ.get("OPENSEARCH_HOST", "localhost"),
+            "port": os.environ.get("OPENSEARCH_PORT", "9200"),
+        }
+    ]
+    app_config["CACHE_TYPE"] = "redis"
+    app_config["SQLALCHEMY_DATABASE_URI"] = "postgresql://test:test@127.0.0.1:5432/test"
+
+    return app_config
+
 @pytest.fixture(scope="module")
 def create_app():
     """Application factory fixture."""
     return _create_api
-
-@pytest.fixture()
-def users(app, db, UserFixture):
-    user1 = UserFixture(
-        email="user@example.org",
-        password="password",
-        active=True,
-        confirmed=True,
-    )
-    user1.create(app, db)
-
-    user2 = UserFixture(
-        email="user2@example.org",
-        password="beetlesmasher",
-        username="beetlesmasher",
-        active=True,
-        confirmed=True,
-    )
-    user2.create(app, db)
-
-    db.session.commit()
-    UserAggregate.index.refresh()
-    return [user1, user2]
 
 @pytest.fixture()
 def kerberos_auth():
@@ -87,18 +62,50 @@ def kerberos_auth():
     return HTTPKerberosAuth(mutual_authentication=REQUIRED)
 
 @pytest.fixture()
-def no_auth():
+def disabled_auth():
     """Fixture for no authentication (disabled Kerberos)."""
     return HTTPKerberosAuth(mutual_authentication=DISABLED)
 
 @pytest.fixture()
-def forbidden_auth():
-    """Fixture for invalid Kerberos authentication to simulate 403 Forbidden."""
-    # Example of setting mutual_authentication to OPTIONAL, which might cause a 403
+def optional_auth():
+    """Fixture for optional Kerberos authentication, if server supports mutual authentication."""
     return HTTPKerberosAuth(mutual_authentication=OPTIONAL)
 
 @pytest.fixture(scope="module")
-def client(app):
-    """Override the default client setup for testing."""
-    with app.test_client() as client:
-        yield client
+def create_user_and_identity():
+    user1= User(
+        _username="testuser",
+        _displayname="Test User",
+        _email="testuser@example.com",
+        domain="example.com",
+        password="hashed_password",
+        active=True,
+        confirmed_at=datetime.utcnow(),
+        version_id=1,
+    )
+
+    _invenio_db.session.add(user1)
+    _invenio_db.session.commit()
+
+    user_identity = UserIdentity(id="user@EXAMPLE.COM", method="krb-EXAMPLE.COM", id_user=1)
+    _invenio_db.session.add(user_identity)
+    _invenio_db.session.commit()
+
+
+@pytest.fixture(scope='module')
+def run_flask_in_background(app):
+    """Run Flask in a separate thread to handle HTTP requests."""
+    http_server = make_server('localhost', 5000, app, threaded=False)
+    def run():
+        http_server.serve_forever()
+
+    flask_thread = threading.Thread(target=run)
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    time.sleep(5)
+    try:
+        yield
+    finally:
+        http_server.shutdown()
+        flask_thread.join()
