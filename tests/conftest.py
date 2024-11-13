@@ -1,4 +1,5 @@
 import os
+import subprocess
 import time
 from datetime import datetime
 import pytest
@@ -18,7 +19,7 @@ logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 @pytest.fixture(scope='module', autouse=True)
 def set_kerberos_env():
     """Set the KRB5_KTNAME environment variable for testing."""
-    os.environ['KRB5_KTNAME'] = 'flask.keytab'
+    os.environ['KRB5_KTNAME'] = 'tests/flask.keytab'
     yield
 
     del os.environ['KRB5_KTNAME']
@@ -71,26 +72,42 @@ def optional_auth():
     """Fixture for optional Kerberos authentication, if server supports mutual authentication."""
     return HTTPKerberosAuth(mutual_authentication=OPTIONAL)
 
+@pytest.fixture()
+def clean_db():
+    try:
+        with _invenio_db.session.begin():
+            _invenio_db.session.query(UserIdentity).delete()
+            _invenio_db.session.query(User).delete()
+
+        _invenio_db.session.commit()
+    except Exception as e:
+        print(e)
+
+
 @pytest.fixture(scope="module")
 def create_user_and_identity():
-    user1= User(
-        _username="testuser",
-        _displayname="Test User",
-        _email="testuser@example.com",
-        domain="example.com",
-        password="hashed_password",
-        active=True,
-        confirmed_at=datetime.utcnow(),
-        version_id=1,
-    )
+    try:
+        user1= User(
+            _username="testuser",
+            _displayname="Test User",
+            _email="testuser@example.com",
+            domain="example.com",
+            password="hashed_password",
+            active=True,
+            confirmed_at=datetime.utcnow(),
+            version_id=1,
+        )
 
-    _invenio_db.session.add(user1)
-    _invenio_db.session.commit()
-
-    user_identity = UserIdentity(id="user@EXAMPLE.COM", method="krb-EXAMPLE.COM", id_user=1)
-    _invenio_db.session.add(user_identity)
-    _invenio_db.session.commit()
-
+        _invenio_db.session.add(user1)
+        _invenio_db.session.commit()
+    except Exception as e:
+        print(e)
+    try:
+        user_identity = UserIdentity(id="user@EXAMPLE.COM", method="krb-EXAMPLE.COM", id_user=1)
+        _invenio_db.session.add(user_identity)
+        _invenio_db.session.commit()
+    except Exception as e:
+        print(e)
 
 @pytest.fixture(scope='module')
 def run_flask_in_background(app):

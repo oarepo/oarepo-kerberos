@@ -5,15 +5,6 @@ from invenio_accounts.models import UserIdentity, User
 
 import requests
 
-def test_get_request_200(run_flask_in_background):
-    """Test a successful GET request, not authentication."""
-
-    url = "http://localhost:5000/datasets/"
-
-    # Ensure the Flask app is running in the background
-    response = requests.get(url, verify=False)
-    assert response.status_code == 200
-
 def test_kerberos_auth_401_no_user_in_db(run_flask_in_background, kerberos_auth):
     """Test a failed POST request due to non-existing UserIdentity."""
 
@@ -34,6 +25,15 @@ def test_kerberos_auth_401_disabled_auth(run_flask_in_background, disabled_auth)
     url = "http://localhost:5000/datasets/"
     response = requests.post(url, auth=disabled_auth, verify=False)
     assert response.status_code == 401
+
+def test_get_request_200(run_flask_in_background, kerberos_auth, create_user_and_identity):
+    """Test a successful GET request, not authentication."""
+
+    url = "http://localhost:5000/datasets/"
+
+    # Ensure the Flask app is running in the background
+    response = requests.get(url, auth=kerberos_auth, verify=False)
+    assert response.status_code == 200
 
 def test_kerberos_auth_200(run_flask_in_background, kerberos_auth, create_user_and_identity):
     """Test a successful POST request with kerberos authentication."""

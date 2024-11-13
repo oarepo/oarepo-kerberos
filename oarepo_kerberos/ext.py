@@ -1,6 +1,6 @@
 import base64
 import flask_login
-from flask import request, g
+from flask import request, g, jsonify
 from flask_gssapi import GSSAPI
 from invenio_db import db
 
@@ -58,12 +58,14 @@ class OarepoKerberosExt(object):
 
             if identity and flask_login.login_user(identity.user):
                 print(f"User {username} authenticated and logged in.")
+                g.kerberos_out_token = out_token
+                return jsonify({'message': 'Authenticated successfully.'}), 200
             else:
                 print("No matching identity found for Kerberos user.")
                 raise NegotiateAuthentication(401)
 
         #request.kerberos_out_token = out_token
-        g.kerberos_out_token = out_token
+        #g.kerberos_out_token = out_token
 
     def after_request(self, response):
         """
@@ -76,5 +78,9 @@ class OarepoKerberosExt(object):
             b64_token = base64.b64encode(g.kerberos_out_token).decode('utf-8')
             auth_data = 'Negotiate {0}'.format(b64_token)
             response.headers['WWW-Authenticate'] = auth_data
+
+        elif response.status_code == 403 or response.status_code == 401:
+            response.headers["WWW-Authenticate"] = "Negotiate"
+            response.status_code = 401
 
         return response

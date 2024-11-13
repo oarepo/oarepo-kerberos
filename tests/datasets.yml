@@ -1,0 +1,15 @@
+record:
+  use:
+    - invenio
+  module:
+    qualified: datasets
+  permissions:
+    presets: [ 'authenticated' ]
+
+  properties:
+    metadata:
+     properties:
+      title:
+       type: keyword
+       facets:
+        facet-groups: [ 'curator' ]
