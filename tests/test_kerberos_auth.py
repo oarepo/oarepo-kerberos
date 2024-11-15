@@ -31,7 +31,6 @@ def test_get_request_200(run_flask_in_background, kerberos_auth, create_user_and
 
     url = "http://localhost:5000/datasets/"
 
-    # Ensure the Flask app is running in the background
     response = requests.get(url, auth=kerberos_auth, verify=False)
     assert response.status_code == 200
 
@@ -40,7 +39,7 @@ def test_kerberos_auth_200(run_flask_in_background, kerberos_auth, create_user_a
 
     url = "http://localhost:5000/datasets/"
     response = requests.post(url, auth=kerberos_auth, verify=False)
-    assert response.status_code == 200
+    assert response.status_code == 201
 
 
 def test_kerberos_auth_401_disabled_auth_with_user(run_flask_in_background, disabled_auth, create_user_and_identity):
@@ -56,5 +55,5 @@ def test_kerberos_auth_200_optional_auth_with_user(run_flask_in_background, opti
 
     url = "http://localhost:5000/datasets/"
     response = requests.post(url, auth=optional_auth, verify=False)
-    assert response.status_code == 200
+    assert response.status_code == 201
 

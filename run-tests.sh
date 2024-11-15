@@ -26,37 +26,32 @@ fi
 
 build_dataset(){
   (
-BUILDER_VENV=.venv-builder
-if test -d $BUILDER_VENV ; then
-	rm -rf $BUILDER_VENV
-fi
+  BUILDER_VENV=.venv-builder
+  if test -d $BUILDER_VENV ; then
+    rm -rf $BUILDER_VENV
+  fi
 
-$PYTHON -m venv $BUILDER_VENV
-. $BUILDER_VENV/bin/activate
-pip install -U setuptools pip wheel
-pip install -U oarepo-model-builder
-
-
-if test -d datasets ; then
-  rm -rf datasets
-fi
+  $PYTHON -m venv $BUILDER_VENV
+  . $BUILDER_VENV/bin/activate
+  pip install -U setuptools pip wheel
+  pip install -U oarepo-model-builder
 
 
-oarepo-compile-model ./tests/datasets.yml --output-directory datasets
+  if test -d datasets ; then
+    rm -rf datasets
+  fi
+
+  oarepo-compile-model ./tests/datasets.yml --output-directory datasets
 )
 }
 
 start_docker_services(){
-# Step 2: Start Docker environment for services
-echo "Starting Docker services..."
-docker compose up -d
-
-# Wait for services to be fully available (adjust sleep if necessary)
-sleep 10
+  echo "Starting Docker services..."
+  docker compose up -d
+  sleep 10
 }
 
 setup_local_kdc(){
-  # Step 3: Set up Kerberos environment
   (
   echo "Setting up Kerberos KDC..."
   cd setup_local_kdc
@@ -81,41 +76,33 @@ setup_local_kdc(){
 
 
 get_ticket(){
-# Step 5: Get a Kerberos ticket for testing
-echo "Authenticating Kerberos user..."
-export KRB5_CONFIG=./setup_local_kdc/krb5-client.conf
-kinit user@EXAMPLE.COM <<< "userpassword"
+  echo "Authenticating Kerberos user..."
+  export KRB5_CONFIG=./setup_local_kdc/krb5-client.conf
+  kinit user@EXAMPLE.COM <<< "userpassword"
 }
 
 export VENV=".venv"
 
 setup_test_venv(){
-  (
+(
+  if test -d $VENV ; then
+    rm -rf $VENV
+  fi
 
+  $PYTHON -m venv $VENV
+  . $VENV/bin/activate
+  pip install -U setuptools pip wheel
 
-if test -d $VENV ; then
-  rm -rf $VENV
-fi
-
-
-$PYTHON -m venv $VENV
-. $VENV/bin/activate
-pip install -U setuptools pip wheel
-
-# Upgrade basic tools and install dependencies
-pip install "oarepo[tests]==${OAREPO_VERSION}.*"
-pip install -e ".[tests]"
-pip install pytest-invenio
-pip install -e datasets
-
+  pip install "oarepo[tests]==${OAREPO_VERSION}.*"
+  pip install -e ".[tests]"
+  pip install pytest-invenio
+  pip install -e datasets
 )
 }
 
 run_tests(){
   . $VENV/bin/activate
-
   export KRB5_CONFIG=./setup_local_kdc/krb5-client.conf
-  # Step 6: Run tests
   echo "Running tests..."
   pytest tests
 }

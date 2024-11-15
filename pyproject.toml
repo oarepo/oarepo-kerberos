@@ -19,7 +19,7 @@ dependencies = [
 include-package-data = false
 
 [tool.setuptools.packages.find]
-include = ["oarepo_kerberos"]
+include = ["oarepo_kerberos*"]
 exclude = ["setup_local_kdc*", "tests*", "datasets*"]
 
 [project.optional-dependencies]

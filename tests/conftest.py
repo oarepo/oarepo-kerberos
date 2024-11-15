@@ -38,6 +38,14 @@ def extra_entry_points():
 
 @pytest.fixture(scope='module')
 def app_config(app_config):
+    app_config["JSONSCHEMAS_HOST"] = "localhost"
+    app_config["RECORDS_REFRESOLVER_CLS"] = (
+        "invenio_records.resolver.InvenioRefResolver"
+    )
+    app_config["RECORDS_REFRESOLVER_STORE"] = (
+        "invenio_jsonschemas.proxies.current_refresolver_store"
+    )
+
     app_config['GSSAPI_HOSTNAME'] = 'localhost'
 
     app_config['SEARCH_INDEXES'] = {}
