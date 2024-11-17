@@ -1,9 +1,7 @@
 #!/bin/bash
 
-# Default Python version, if not specified
 PYTHON="${PYTHON:-python3.12}"
 
-# Set environment variables and exit on errors
 set -e
 
 OAREPO_VERSION="${OAREPO_VERSION:-12}"
@@ -63,7 +61,7 @@ setup_local_kdc(){
   # Wait for Kerberos to initializeAn
   sleep 5
 
-  # Step 4: Configure Kerberos principals and keytab
+  # Configure Kerberos principals and keytab
   echo -e "userpassword\nuserpassword" | docker exec -i kerberos-kdc kadmin.local -q "addprinc admin/admin@EXAMPLE.COM"
   echo -e "userpassword\nuserpassword" | docker exec -i kerberos-kdc kadmin.local -q "addprinc user@EXAMPLE.COM"
   docker exec kerberos-kdc kadmin.local -q "addprinc -randkey HTTP/localhost@EXAMPLE.COM"
@@ -114,6 +112,16 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     get_ticket
     setup_test_venv
     run_tests
+else
+    echo "This script includes the following functions:"
+    echo "1. build_dataset: builds model"
+    echo "2. start_docker_services: Starts Docker containers (DB, Cache etc.)"
+    echo "3. setup_local_kdc: Configures a local Kerberos Key Distribution Center (KDC) for authentication."
+    echo "4. get_ticket: Obtains a Kerberos ticket for authentication testing."
+    echo "5. setup_test_venv: Sets up a virtual environment for testing."
+    echo "6. run_tests: Runs pytest."
+    echo ""
+    echo "To execute the script, run it directly: ./run-tests.sh"
 fi
 
 
