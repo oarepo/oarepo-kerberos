@@ -4,7 +4,6 @@ from flask_login import current_user
 from flask import g
 from flask_gssapi import GSSAPI
 
-
 from .resources.negotiate import NegotiateAuthentication
 from invenio_accounts.models import UserIdentity
 from .cli.cli import kerberos
