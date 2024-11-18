@@ -3,6 +3,7 @@ import flask_login
 from flask_login import current_user
 from flask import request, g
 from flask_gssapi import GSSAPI
+from invenio_db import db
 
 from .resources.negotiate import NegotiateAuthentication
 from invenio_accounts.models import UserIdentity
