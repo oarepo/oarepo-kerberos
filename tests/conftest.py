@@ -9,6 +9,7 @@ import threading # for creating running server
 
 from invenio_app.factory import create_api as _create_api
 from invenio_accounts.models import UserIdentity, User
+from invenio_users_resources.records import UserAggregate
 from invenio_db import db as _invenio_db
 
 from requests_kerberos import HTTPKerberosAuth, REQUIRED, OPTIONAL, DISABLED
@@ -88,6 +89,30 @@ def clean_db():
             _invenio_db.session.query(User).delete()
 
         _invenio_db.session.commit()
+    except Exception as e:
+        print(e)
+
+
+@pytest.fixture()
+def users(UserFixture, app, db):
+    user1 = UserFixture(
+        email="testuser@example.com",
+        password="password",
+        active=True,
+        confirmed=True
+    )
+
+    user1.create(app, db)
+
+    db.session.commit()
+    UserAggregate.index.refresh()
+    return [user1]
+
+@pytest.fixture()
+def user_identity(users, app, db):
+    try:
+        UserIdentity.create(user=users[0],method='krb-EXAMPLE.COM', external_id="user@EXAMPLE.COM")
+        db.session.commit()
     except Exception as e:
         print(e)
 

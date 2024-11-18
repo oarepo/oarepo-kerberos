@@ -75,7 +75,7 @@ def get_mapping(email):
     results = query.all()
 
     if results:
-        print("Output format: email -> kerberos id")
+        click.echo("Output format: email -> kerberos id")
         for user_email, kerberos_id in results:
             click.echo(f"{user_email} -> {kerberos_id}")
     else:
