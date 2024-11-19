@@ -76,3 +76,30 @@ class OarepoKerberosExt(object):
             response.headers["WWW-Authenticate"] = "Negotiate"
 
         return response
+
+def api_finalize_app(app):
+    """Finalize app."""
+    finalize_app(app)
+
+def finalize_app(app):
+    """Finalize app."""
+    log.debug("Reordering after_request functions")
+    if app.after_request_funcs.get(None):
+        app.after_request_funcs[None] = sorted(
+            app.after_request_funcs[None],
+            key=lambda func: 0 if func.__qualname__.startswith('OarepoKerberosExt') else 1
+        )
+    log.debug("Current order of after_request functions: %s",
+              [func.__qualname__ for func in app.after_request_funcs[None]])
+
+    log.debug("Reordering before_request functions")
+    if app.before_request_funcs.get(None):
+        app.before_request_funcs[None] = sorted(
+            app.before_request_funcs[None],
+            key=lambda func: 0 if func.__qualname__.startswith('OarepoKerberosExt') else 1
+        )
+    log.debug("Current before_request functions: %s",
+              [func.__qualname__ for func in app.before_request_funcs[None]])
+
+
+
