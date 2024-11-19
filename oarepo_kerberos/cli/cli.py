@@ -65,7 +65,7 @@ def remove_mapping(email, kerberos_id):
 @mapping.command('get')
 @click.option('--email', default=None, help="Filter by email.")
 def get_mapping(email):
-    """List Kerberos mappings."""
+    """List all Kerberos mappings or specific user mapping."""
     query = db.session.query(User.email, UserIdentity.id).join(
         UserIdentity, User.id == UserIdentity.id_user
     )

@@ -4,7 +4,6 @@ import json
 
 class NegotiateAuthentication(HTTPJSONException):
     def __init__(self,*args, **kwargs):
-        # TODO check permissions
         if 403 in args:
             self.code = 403
             self.description = 'You do not have permission to access this resource.'

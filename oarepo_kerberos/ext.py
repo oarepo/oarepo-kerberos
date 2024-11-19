@@ -10,6 +10,7 @@ from .cli.cli import kerberos
 
 import logging
 log = logging.getLogger(__name__)
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
 class OarepoKerberosExt(object):
     """
@@ -63,6 +64,7 @@ class OarepoKerberosExt(object):
         """
         Executed after each request. If Kerberos authentication was used,
         adds the 'WWW-Authenticate' header with the Kerberos token to the response.
+        Tries to authenticate all the time, by sending 401 with "Negotiate" header
         """
         if hasattr(g, 'kerberos_out_token') and g.kerberos_out_token:
             b64_token = base64.b64encode(g.kerberos_out_token).decode('utf-8')
@@ -82,23 +84,25 @@ def api_finalize_app(app):
     finalize_app(app)
 
 def finalize_app(app):
-    """Finalize app."""
-    log.debug("Reordering after_request functions")
+    """Finalize app.
+    Reordering of after/before requests functions are needed, because initialization is not deterministic
+    """
+    log.info("Reordering after_request functions")
     if app.after_request_funcs.get(None):
         app.after_request_funcs[None] = sorted(
             app.after_request_funcs[None],
             key=lambda func: 0 if func.__qualname__.startswith('OarepoKerberosExt') else 1
         )
-    log.debug("Current order of after_request functions: %s",
+    log.info("Current order of after_request functions: %s",
               [func.__qualname__ for func in app.after_request_funcs[None]])
 
-    log.debug("Reordering before_request functions")
+    log.info("Reordering before_request functions")
     if app.before_request_funcs.get(None):
         app.before_request_funcs[None] = sorted(
             app.before_request_funcs[None],
             key=lambda func: 0 if func.__qualname__.startswith('OarepoKerberosExt') else 1
         )
-    log.debug("Current before_request functions: %s",
+    log.info("Current before_request functions: %s",
               [func.__qualname__ for func in app.before_request_funcs[None]])
 
 
