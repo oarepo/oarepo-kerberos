@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, override
 from flask_resources import HTTPJSONException
 
 if TYPE_CHECKING:
-    from _typeshed.wsgi import WSGIEnvironment
+    from collections.abc import Mapping
 
 
 class NegotiateAuthentication(HTTPJSONException):
@@ -29,9 +29,9 @@ class NegotiateAuthentication(HTTPJSONException):
     @override
     def get_headers(
         self,
-        environ: WSGIEnvironment | None = None,
-        scope: dict[str, Any] | None = None,
+        environ: Any | None = None,
+        scope: Mapping[str, Any] | None = None,
     ) -> list[tuple[str, str]]:
         headers = super().get_headers(environ, scope)
         headers.append(("WWW-Authenticate", "Negotiate"))
-        return headers
+        return headers  # type:ignore[no-any-return]

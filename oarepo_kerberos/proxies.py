@@ -17,5 +17,5 @@ if TYPE_CHECKING:
 from flask import current_app
 from werkzeug.local import LocalProxy
 
-current_kerberos: OarepoKerberosExt = LocalProxy(lambda: current_app.extensions["oarepo-kerberos"])
+current_kerberos: OarepoKerberosExt = LocalProxy(lambda: current_app.extensions["oarepo-kerberos"])  # type: ignore[assignment]
 """Helper proxy to get the current kerberos authentication extension."""

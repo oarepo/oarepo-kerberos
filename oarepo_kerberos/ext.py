@@ -21,7 +21,7 @@ import flask_login
 from flask import g
 from flask_gssapi import GSSAPI
 from flask_login import current_user
-from gssapi.exceptions import GSSError
+from gssapi.raw.misc import GSSError
 from invenio_accounts.models import UserIdentity
 
 from .cli import kerberos
@@ -45,7 +45,7 @@ class OarepoKerberosExt:
             app (Optional[Flask]): The Flask application instance.
 
         """
-        self.gssapi = None
+        self.gssapi: GSSAPI | None = None
         if app:
             self.init_app(app)
 
@@ -74,6 +74,8 @@ class OarepoKerberosExt:
             NegotiateAuthentication: If authentication fails.
 
         """
+        if self.gssapi is None:
+            return
         try:
             username, out_token = self.gssapi.authenticate()
         except GSSError, binascii.Error:  # TODO: claude suggestion
