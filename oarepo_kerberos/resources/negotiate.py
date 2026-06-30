@@ -9,36 +9,29 @@
 
 from __future__ import annotations
 
-import json
-from typing import Any
+from typing import TYPE_CHECKING, Any, override
 
-from flask_login import current_user
 from flask_resources import HTTPJSONException
+
+if TYPE_CHECKING:
+    from _typeshed.wsgi import WSGIEnvironment
 
 
 class NegotiateAuthentication(HTTPJSONException):
-    """Custom HTTP exception for Negotiate authentication."""
+    """401 challenge that (re-)initiates SPNEGO/Negotiate auth."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initialize the NegotiateAuthentication exception."""
-        if 403 in args:
-            self.code = 403
-            self.description = "You do not have permission to access this resource."
-        elif current_user.is_authenticated:
-            self.code = 200
-            self.description = "Authenticated successfully."
-        else:
-            self.code = 401
-            self.description = "Authentication is required to access this resource."
+    description = "Authentication is required to access this resource."
 
-        super().__init__(**kwargs)
+    def __init__(self, **kwargs: Any) -> None:
+        """Construct."""
+        super().__init__(code=401, **kwargs)
 
-    def get_headers(self, environ: dict | None = None, scope: dict | None = None) -> list[tuple[str, str]]:
-        """Get the HTTP headers for the response."""
-        return [("WWW-Authenticate", "Negotiate")]
-
-    def get_body(self, environ: dict | None = None, scope: dict | None = None) -> str:
-        """Get the HTTP body for the response."""
-        body = {"status": self.code, "message": self.get_description(environ)}
-
-        return json.dumps(body)
+    @override
+    def get_headers(
+        self,
+        environ: WSGIEnvironment | None = None,
+        scope: dict[str, Any] | None = None,
+    ) -> list[tuple[str, str]]:
+        headers = super().get_headers(environ, scope)
+        headers.append(("WWW-Authenticate", "Negotiate"))
+        return headers

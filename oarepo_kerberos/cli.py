@@ -48,8 +48,6 @@ def add_mapping(email: str, kerberos_id: str) -> None:
         click.echo(f"Mapping added: {email} -> {kerberos_id}")
     except AlreadyLinkedError:
         click.echo("Error: Already linked.")
-    except Exception as e:
-        click.echo(f"Error: {e}")
 
 
 @mapping.command("remove")

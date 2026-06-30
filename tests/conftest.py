@@ -1,9 +1,11 @@
-import logging
 import os
 import threading  # for creating running server
 import time
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, override
 
 import pytest
+from flask_principal import Identity, Need
 from invenio_access.permissions import authenticated_user
 from invenio_accounts.models import UserIdentity
 from invenio_app.factory import create_api as _create_api
@@ -11,15 +13,19 @@ from invenio_records_permissions import RecordPermissionPolicy
 from invenio_records_permissions.generators import (
     AnyUser,
     AuthenticatedUser,
-    Generator,
     SystemProcess,
 )
 from invenio_search.engine import dsl
 from oarepo_model.customizations import SetPermissionPolicy
+from oarepo_runtime.services.generators import Generator
 from requests_kerberos import DISABLED, OPTIONAL, REQUIRED, HTTPKerberosAuth
 from werkzeug.serving import make_server
 
-# logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
+if TYPE_CHECKING:
+    from collections.abc import Collection
+
+    from flask_principal import Identity, Need
+
 
 # These tests run with a live Kerberos ticket in the environment (from kinit). libpq
 # would otherwise try GSSAPI auth against Postgres and fail noisily ("could not initiate
@@ -51,11 +57,13 @@ class AuthenticatedOnlyVisible(Generator):
     ``test_search_does_not_apply_kerberos_identity``.
     """
 
-    def needs(self, **kwargs):
+    @override
+    def needs(self, **kwargs: Any) -> Collection[Need]:
         """Only authenticated users may read."""
         return [authenticated_user]
 
-    def query_filter(self, identity=None, **kwargs):
+    @override
+    def query_filter(self, identity: Identity | None = None, **kwargs: Any) -> dsl.query.Query:
         """Match everything for authenticated identities, nothing for anonymous."""
         if identity is not None and authenticated_user in identity.provides:
             return dsl.Q("match_all")
@@ -118,10 +126,10 @@ def set_kerberos_env():
     ``test-setup.sh`` exports both for ``./run.sh``; setting them here (without
     clobbering an existing ``KRB5_CONFIG``) lets the suite also run straight from an IDE.
     """
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    repo_root = Path(__file__).resolve().parent.parent
     previous_config = os.environ.get("KRB5_CONFIG")
-    os.environ["KRB5_KTNAME"] = os.path.join(repo_root, "tests", "flask.keytab")
-    os.environ.setdefault("KRB5_CONFIG", os.path.join(repo_root, "setup_local_kdc", "krb5-client.conf"))
+    os.environ["KRB5_KTNAME"] = str(repo_root / "tests" / "flask.keytab")
+    os.environ.setdefault("KRB5_CONFIG", str(repo_root / "setup_local_kdc" / "krb5-client.conf"))
     yield
 
     del os.environ["KRB5_KTNAME"]
@@ -129,6 +137,7 @@ def set_kerberos_env():
         os.environ.pop("KRB5_CONFIG", None)
     else:
         os.environ["KRB5_CONFIG"] = previous_config
+
 
 """
 @pytest.fixture(scope="module")
@@ -194,12 +203,9 @@ def location(location):
 @pytest.fixture
 def kerberos_identity(users, db):
     user = users[0]
-    try:
-        user_identity = UserIdentity(id="user@EXAMPLE.COM", method="krb-EXAMPLE.COM", id_user=user.id)
-        db.session.add(user_identity)
-        db.session.commit()
-    except Exception as e:
-        print(e)
+    user_identity = UserIdentity(id="user@EXAMPLE.COM", method="krb-EXAMPLE.COM", id_user=user.id)
+    db.session.add(user_identity)
+    db.session.commit()
 
 
 @pytest.fixture(scope="module")
@@ -207,7 +213,7 @@ def run_flask_in_background(app):
     """Run Flask in a separate thread to handle HTTP requests."""
     http_server = make_server("localhost", 5000, app, threaded=False)
 
-    def run():
+    def run() -> None:
         http_server.serve_forever()
 
     flask_thread = threading.Thread(target=run)
@@ -220,6 +226,7 @@ def run_flask_in_background(app):
     finally:
         http_server.shutdown()
         flask_thread.join()
+
 
 @pytest.fixture
 def service(app):

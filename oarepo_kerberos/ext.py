@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +21,7 @@ import flask_login
 from flask import g
 from flask_gssapi import GSSAPI
 from flask_login import current_user
+from gssapi.exceptions import GSSError
 from invenio_accounts.models import UserIdentity
 
 from .cli import kerberos
@@ -72,7 +74,17 @@ class OarepoKerberosExt:
             NegotiateAuthentication: If authentication fails.
 
         """
-        username, out_token = self.gssapi.authenticate() # TODO: what if there is Negotiate header and this fails?
+        try:
+            username, out_token = self.gssapi.authenticate()
+        except GSSError, binascii.Error:  # TODO: claude suggestion
+            # A Negotiate header was present but the token could not be validated:
+            # a bad/expired/replayed ticket, a malformed (non-base64) token, or a
+            # service keytab out of sync with the KDC. These are client/auth
+            # conditions, not server faults, so re-challenge with a 401 Negotiate
+            # instead of letting the exception surface as a 500.
+            log.warning("Kerberos negotiation failed for Negotiate request.", exc_info=True)
+            raise NegotiateAuthentication from None
+
         if username and out_token:
             realm = username.split("@")[-1]
             identity = UserIdentity.query.filter(
@@ -84,8 +96,8 @@ class OarepoKerberosExt:
                 log.debug("User %s authenticated and logged in.", username)
                 g.kerberos_out_token = out_token
             else:
-                log.debug("No matching identity found for Kerberos user.") # TODO: add the log to response?
-                raise NegotiateAuthentication(401)
+                log.debug("No matching identity found for Kerberos user.")  # TODO: add the log to response?
+                raise NegotiateAuthentication
 
     def after_request(self, response: Response) -> Response:
         """Modify the response after handling the request.
