@@ -1,150 +1,212 @@
-import os
-import time
-from datetime import datetime
-import pytest
-
-from werkzeug.serving import make_server
-import threading # for creating running server
-
-from invenio_app.factory import create_api as _create_api
-from invenio_accounts.models import UserIdentity, User
-from invenio_users_resources.records import UserAggregate
-from invenio_db import db as _invenio_db
-
-from requests_kerberos import HTTPKerberosAuth, REQUIRED, OPTIONAL, DISABLED
 import logging
+import os
+import threading  # for creating running server
+import time
 
-logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
+import pytest
+from invenio_access.permissions import authenticated_user
+from invenio_accounts.models import UserIdentity
+from invenio_app.factory import create_api as _create_api
+from invenio_records_permissions import RecordPermissionPolicy
+from invenio_records_permissions.generators import (
+    AnyUser,
+    AuthenticatedUser,
+    Generator,
+    SystemProcess,
+)
+from invenio_search.engine import dsl
+from oarepo_model.customizations import SetPermissionPolicy
+from requests_kerberos import DISABLED, OPTIONAL, REQUIRED, HTTPKerberosAuth
+from werkzeug.serving import make_server
 
-@pytest.fixture(scope='module', autouse=True)
+# logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
+
+# These tests run with a live Kerberos ticket in the environment (from kinit). libpq
+# would otherwise try GSSAPI auth against Postgres and fail noisily ("could not initiate
+# GSSAPI security context ... Cannot find KDC for realm EXAMPLE.COM") before falling back
+# to password auth. The DB connection is not Kerberos-protected, so disable GSS for it.
+os.environ.setdefault("PGGSSENCMODE", "disable")
+
+pytest_plugins = [
+    "pytest_oarepo.records",
+    "pytest_oarepo.fixtures",
+    "pytest_oarepo.users",
+    "pytest_oarepo.files",
+]
+
+
+class AuthenticatedOnlyVisible(Generator):
+    """Read generator whose *query filter* genuinely depends on the identity.
+
+    Invenio's own ``AuthenticatedUser.query_filter`` returns ``match_all``
+    unconditionally (see invenio_records_permissions.generators), so it does NOT
+    actually restrict *search* visibility by identity. This generator does:
+    authenticated identities match every record, anonymous identities match none.
+
+    It exists to expose an architectural gap in OarepoKerberosExt: identity is
+    established only by downgrading a 401/403 to a Negotiate challenge
+    (``after_request``). A search is gated by ``can_search`` (here open to anyone),
+    so it returns a *filtered 200*, never a 403 — the challenge never fires and the
+    Kerberos ticket-holder is filtered as an anonymous user. See
+    ``test_search_does_not_apply_kerberos_identity``.
+    """
+
+    def needs(self, **kwargs):
+        """Only authenticated users may read."""
+        return [authenticated_user]
+
+    def query_filter(self, identity=None, **kwargs):
+        """Match everything for authenticated identities, nothing for anonymous."""
+        if identity is not None and authenticated_user in identity.provides:
+            return dsl.Q("match_all")
+        return dsl.Q("match_none")
+
+
+class DatasetsPermissionPolicy(RecordPermissionPolicy):
+    """Read visibility is identity-dependent."""
+
+    can_search = (SystemProcess(), AnyUser())
+    can_read = (SystemProcess(), AuthenticatedOnlyVisible())
+    can_create = (SystemProcess(), AuthenticatedUser())
+    can_update = (SystemProcess(), AuthenticatedUser())
+    can_delete = (SystemProcess(), AuthenticatedUser())
+
+
+@pytest.fixture(scope="session")
+def datasets_model():
+    """Define a second 'restricted-datasets' model with identity-dependent read.
+
+    Same machinery as ``datasets_model`` but with ``RestrictedDatasetsPermissionPolicy``
+    (read visible only to authenticated identities). Exposes the ``/restricted-datasets/``
+    endpoints used by ``test_search_does_not_apply_kerberos_identity``. Like
+    ``datasets_model`` it must be session-scoped and registered exactly once.
+    """
+    from oarepo_model.api import model
+    from oarepo_model.presets.records_resources import records_resources_preset
+
+    restricted_model = model(
+        name="datasets",
+        version="1.0.0",
+        presets=[records_resources_preset],
+        types=[
+            {
+                "Metadata": {
+                    "properties": {
+                        "title": {"type": "keyword"},
+                    },
+                },
+            }
+        ],
+        metadata_type="Metadata",
+        customizations=[
+            SetPermissionPolicy(DatasetsPermissionPolicy),
+        ],
+    )
+    restricted_model.register()
+    return restricted_model
+
+
+@pytest.fixture(scope="module", autouse=True)
 def set_kerberos_env():
-    """Set the KRB5_KTNAME environment variable for testing."""
-    os.environ['KRB5_KTNAME'] = 'tests/flask.keytab'
+    """Point krb5/GSSAPI at the local test keytab and KDC for the test process.
+
+    ``KRB5_KTNAME`` is the service keytab used server-side. ``KRB5_CONFIG`` points the
+    krb5 *client* at the throwaway KDC (realm EXAMPLE.COM on localhost:2222), which is
+    required whenever the client has to acquire a ticket — both the 401-challenge retry
+    and preemptive auth (``force_preemptive``). Without it the client falls back to the
+    system ``/etc/krb5.conf`` and fails with "Cannot find KDC for realm EXAMPLE.COM".
+    ``test-setup.sh`` exports both for ``./run.sh``; setting them here (without
+    clobbering an existing ``KRB5_CONFIG``) lets the suite also run straight from an IDE.
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    previous_config = os.environ.get("KRB5_CONFIG")
+    os.environ["KRB5_KTNAME"] = os.path.join(repo_root, "tests", "flask.keytab")
+    os.environ.setdefault("KRB5_CONFIG", os.path.join(repo_root, "setup_local_kdc", "krb5-client.conf"))
     yield
 
-    del os.environ['KRB5_KTNAME']
+    del os.environ["KRB5_KTNAME"]
+    if previous_config is None:
+        os.environ.pop("KRB5_CONFIG", None)
+    else:
+        os.environ["KRB5_CONFIG"] = previous_config
+
+"""
+@pytest.fixture(scope="module")
+def extra_entry_points(datasets_model):
+    # Depending on the model fixtures forces the runtime models to register their
+    # entry points (via sys.meta_path) before the Invenio app is created, so the
+    # app discovers the ``/datasets/`` and ``/restricted-datasets/`` services and
+    # resources.
+    return {
+        "invenio_base.apps": [
+            "oarepo_kerberos = oarepo_kerberos.ext:OarepoKerberosExt",
+        ],
+        "invenio_base.api_apps": ["oarepo_kerberos = oarepo_kerberos.ext:OarepoKerberosExt"],
+    }
+"""
 
 
 @pytest.fixture(scope="module")
-def extra_entry_points():
-    return {
-        'invenio_base.apps': [
-            "oarepo_kerberos = oarepo_kerberos.ext:OarepoKerberosExt",
-        ],
-        'invenio_base.api_apps': [
-            "oarepo_kerberos = oarepo_kerberos.ext:OarepoKerberosExt"
-        ]
-    }
-
-@pytest.fixture(scope='module')
 def app_config(app_config):
     app_config["JSONSCHEMAS_HOST"] = "localhost"
-    app_config["RECORDS_REFRESOLVER_CLS"] = (
-        "invenio_records.resolver.InvenioRefResolver"
-    )
-    app_config["RECORDS_REFRESOLVER_STORE"] = (
-        "invenio_jsonschemas.proxies.current_refresolver_store"
-    )
-
-    app_config['GSSAPI_HOSTNAME'] = 'localhost'
-
-    app_config['SEARCH_INDEXES'] = {}
-    app_config["SEARCH_HOSTS"] = [
-        {
-            "host": os.environ.get("OPENSEARCH_HOST", "localhost"),
-            "port": os.environ.get("OPENSEARCH_PORT", "9200"),
-        }
-    ]
+    app_config["RECORDS_REFRESOLVER_CLS"] = "invenio_records.resolver.InvenioRefResolver"
+    app_config["RECORDS_REFRESOLVER_STORE"] = "invenio_jsonschemas.proxies.current_refresolver_store"
+    app_config["GSSAPI_HOSTNAME"] = "localhost"
     app_config["CACHE_TYPE"] = "redis"
-    app_config["SQLALCHEMY_DATABASE_URI"] = "postgresql://test:test@127.0.0.1:5432/test"
 
     return app_config
+
 
 @pytest.fixture(scope="module")
 def create_app():
     """Application factory fixture."""
     return _create_api
 
-@pytest.fixture()
+
+@pytest.fixture
 def kerberos_auth():
     """Fixture for Kerberos authentication with mutual authentication required."""
     return HTTPKerberosAuth(mutual_authentication=REQUIRED)
 
-@pytest.fixture()
+
+@pytest.fixture
+def kerberos_auth_forced():
+    return HTTPKerberosAuth(mutual_authentication=REQUIRED, force_preemptive=True)
+
+
+@pytest.fixture
 def disabled_auth():
     """Fixture for no authentication (disabled Kerberos)."""
     return HTTPKerberosAuth(mutual_authentication=DISABLED)
 
-@pytest.fixture()
+
+@pytest.fixture
 def optional_auth():
     """Fixture for optional Kerberos authentication, if server supports mutual authentication."""
     return HTTPKerberosAuth(mutual_authentication=OPTIONAL)
 
-@pytest.fixture()
-def clean_db():
+
+@pytest.fixture(autouse=True)
+def location(location):
+    return location
+
+
+@pytest.fixture
+def kerberos_identity(users, db):
+    user = users[0]
     try:
-        with _invenio_db.session.begin():
-            _invenio_db.session.query(UserIdentity).delete()
-            _invenio_db.session.query(User).delete()
-
-        _invenio_db.session.commit()
-    except Exception as e:
-        print(e)
-
-
-@pytest.fixture()
-def users(UserFixture, app, db):
-    user1 = UserFixture(
-        email="testuser@example.com",
-        password="password",
-        active=True,
-        confirmed=True
-    )
-
-    user1.create(app, db)
-
-    db.session.commit()
-    UserAggregate.index.refresh()
-    return [user1]
-
-@pytest.fixture()
-def user_identity(users, app, db):
-    try:
-        UserIdentity.create(user=users[0],method='krb-EXAMPLE.COM', external_id="user@EXAMPLE.COM")
+        user_identity = UserIdentity(id="user@EXAMPLE.COM", method="krb-EXAMPLE.COM", id_user=user.id)
+        db.session.add(user_identity)
         db.session.commit()
     except Exception as e:
         print(e)
 
 
 @pytest.fixture(scope="module")
-def create_user_and_identity():
-    try:
-        user1= User(
-            _username="testuser",
-            _displayname="Test User",
-            _email="testuser@example.com",
-            domain="example.com",
-            password="hashed_password",
-            active=True,
-            confirmed_at=datetime.utcnow(),
-            version_id=1,
-        )
-
-        _invenio_db.session.add(user1)
-        _invenio_db.session.commit()
-    except Exception as e:
-        print(e)
-    try:
-        user_identity = UserIdentity(id="user@EXAMPLE.COM", method="krb-EXAMPLE.COM", id_user=1)
-        _invenio_db.session.add(user_identity)
-        _invenio_db.session.commit()
-    except Exception as e:
-        print(e)
-
-@pytest.fixture(scope='module')
 def run_flask_in_background(app):
     """Run Flask in a separate thread to handle HTTP requests."""
-    http_server = make_server('localhost', 5000, app, threaded=False)
+    http_server = make_server("localhost", 5000, app, threaded=False)
+
     def run():
         http_server.serve_forever()
 
@@ -158,3 +220,7 @@ def run_flask_in_background(app):
     finally:
         http_server.shutdown()
         flask_thread.join()
+
+@pytest.fixture
+def service(app):
+    return app.extensions["datasets"].records_service

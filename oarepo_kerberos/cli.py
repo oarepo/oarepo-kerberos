@@ -36,10 +36,8 @@ def add_mapping(email: str, kerberos_id: str) -> None:
         click.echo(f"Error: User with email {email} not found.")
         return
 
-    realm = kerberos_id.split("@")[-1]
-    existing_mapping = UserIdentity.get_user(
-        method=f"krb-{realm}", external_id=kerberos_id
-    )
+    realm = kerberos_id.rsplit("@", maxsplit=1)[-1]
+    existing_mapping = UserIdentity.get_user(method=f"krb-{realm}", external_id=kerberos_id)
     if existing_mapping:
         click.echo(f"Error: Mapping to kerberos {kerberos_id} already exists.")
         return
@@ -65,7 +63,7 @@ def remove_mapping(email: str, kerberos_id: str) -> None:
         click.echo(f"Error: User with email {email} not found.")
         return
 
-    realm = kerberos_id.split("@")[-1]
+    realm = kerberos_id.rsplit("@", maxsplit=1)[-1]
     UserIdentity.delete_by_external_id(method=f"krb-{realm}", external_id=kerberos_id)
     db.session.commit()
 
@@ -76,9 +74,7 @@ def remove_mapping(email: str, kerberos_id: str) -> None:
 @click.option("--email", default=None, help="Filter by email.")
 def get_mapping(email: str | None) -> None:
     """List all Kerberos mappings or specific user mapping."""
-    query = db.session.query(User.email, UserIdentity.id).join(
-        UserIdentity, User.id == UserIdentity.id_user
-    )
+    query = db.session.query(User.email, UserIdentity.id).join(UserIdentity, User.id == UserIdentity.id_user)
     if email:
         query = query.filter(User.email == email)
 

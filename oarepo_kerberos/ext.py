@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from flask import Flask, Response
@@ -22,7 +22,7 @@ from flask_gssapi import GSSAPI
 from flask_login import current_user
 from invenio_accounts.models import UserIdentity
 
-from .cli.cli import kerberos
+from .cli import kerberos
 from .resources.negotiate import NegotiateAuthentication
 
 log = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ class OarepoKerberosExt:
     manages user authentication, and configures CLI commands for Kerberos.
     """
 
-    def __init__(self, app: Optional[Flask] = None) -> None:
+    def __init__(self, app: Flask | None = None) -> None:
         """Initialize the extension.
 
         Args:
@@ -72,7 +72,7 @@ class OarepoKerberosExt:
             NegotiateAuthentication: If authentication fails.
 
         """
-        username, out_token = self.gssapi.authenticate()
+        username, out_token = self.gssapi.authenticate() # TODO: what if there is Negotiate header and this fails?
         if username and out_token:
             realm = username.split("@")[-1]
             identity = UserIdentity.query.filter(
@@ -84,7 +84,7 @@ class OarepoKerberosExt:
                 log.debug("User %s authenticated and logged in.", username)
                 g.kerberos_out_token = out_token
             else:
-                log.debug("No matching identity found for Kerberos user.")
+                log.debug("No matching identity found for Kerberos user.") # TODO: add the log to response?
                 raise NegotiateAuthentication(401)
 
     def after_request(self, response: Response) -> Response:
@@ -105,7 +105,7 @@ class OarepoKerberosExt:
             auth_data = f"Negotiate {b64_token}"
             response.headers["WWW-Authenticate"] = auth_data
 
-        elif response.status_code == 403 or response.status_code == 401:
+        elif response.status_code in (401, 403):
             if current_user.is_authenticated:
                 return response
             response.status_code = 401
@@ -124,6 +124,12 @@ def api_finalize_app(app: Flask) -> None:
     finalize_app(app)
 
 
+def _is_kerberos_method(func: Any) -> bool:
+    return hasattr(func, "__qualname__") and func.__qualname__.startswith(
+        "OarepoKerberosExt"
+    )  # functools.partial issue
+
+
 def finalize_app(app: Flask) -> None:
     """Finalize app.
 
@@ -137,24 +143,24 @@ def finalize_app(app: Flask) -> None:
     if app.after_request_funcs.get(None):
         app.after_request_funcs[None] = sorted(
             app.after_request_funcs[None],
-            key=lambda func: 0
-            if func.__qualname__.startswith("OarepoKerberosExt")
-            else 1,
+            key=lambda func: 0 if _is_kerberos_method(func) else 1,
         )
+    """
     log.info(
         "Current order of after_request functions: %s",
         [func.__qualname__ for func in app.after_request_funcs[None]],
     )
+    """
 
     log.info("Reordering before_request functions")
     if app.before_request_funcs.get(None):
         app.before_request_funcs[None] = sorted(
             app.before_request_funcs[None],
-            key=lambda func: 0
-            if func.__qualname__.startswith("OarepoKerberosExt")
-            else 1,
+            key=lambda func: 0 if _is_kerberos_method(func) else 1,
         )
+    """
     log.info(
         "Current before_request functions: %s",
         [func.__qualname__ for func in app.before_request_funcs[None]],
     )
+    """

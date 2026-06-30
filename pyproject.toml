@@ -1,3 +1,61 @@
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "oarepo_kerberos"
+version = "0.1.0"
+description = "A library for Kerberos integration in Oarepo."
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "flask-gssapi",
+    "click",
+    "flask-login",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+]
+tests = [
+    "pytest>=7.1.2",
+    "pytest-invenio",
+    "pytest-flask",
+    "requests-kerberos",
+    "oarepo-model",
+]
+oarepo14 = [
+    "oarepo[rdm]>=14,<15",
+]
+
+[project.entry-points."invenio_base.apps"]
+oarepo_kerberos = "oarepo_kerberos.ext:OarepoKerberosExt"
+
+[project.entry-points."invenio_base.api_apps"]
+oarepo_kerberos = "oarepo_kerberos.ext:OarepoKerberosExt"
+
+[project.entry-points."invenio_base.finalize_app"]
+oarepo_kerberos = "oarepo_kerberos.ext:finalize_app"
+
+[project.entry-points."invenio_base.api_finalize_app"]
+oarepo_kerberos = "oarepo_kerberos.ext:api_finalize_app"
+
+[project.entry-points."flask.commands"]
+oarepo_kerberos = "oarepo_kerberos.cli:kerberos"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+include = ["oarepo_kerberos*"]
+exclude = ["setup_local_kdc*", "tests*"]
+
+# OARepo 14 pins specially-rebuilt packages (e.g. citeproc-py-styles) that are only
+# published on the CESNET GitLab index, not PyPI. The ./run.sh runner sets these via
+# UV_EXTRA_INDEX_URL/PIP_EXTRA_INDEX_URL; declaring them here lets any direct `uv`
+# invocation (e.g. PyCharm's `uv run`, plain `uv sync`) resolve the tree too.
+# `unsafe-best-match` makes uv search every index for the best version, which is
+# required because the package names also exist on PyPI with different versions.
+[tool.uv]
+extra-index-url = ["https://gitlab.cesnet.cz/api/v4/projects/1408/packages/pypi/simple"]
+index-strategy = "unsafe-best-match"

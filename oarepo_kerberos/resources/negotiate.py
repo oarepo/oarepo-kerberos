@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 from flask_login import current_user
 from flask_resources import HTTPJSONException
@@ -33,15 +33,11 @@ class NegotiateAuthentication(HTTPJSONException):
 
         super().__init__(**kwargs)
 
-    def get_headers(
-        self, environ: Optional[dict] = None, scope: Optional[dict] = None
-    ) -> list[tuple[str, str]]:
+    def get_headers(self, environ: dict | None = None, scope: dict | None = None) -> list[tuple[str, str]]:
         """Get the HTTP headers for the response."""
         return [("WWW-Authenticate", "Negotiate")]
 
-    def get_body(
-        self, environ: Optional[dict] = None, scope: Optional[dict] = None
-    ) -> str:
+    def get_body(self, environ: dict | None = None, scope: dict | None = None) -> str:
         """Get the HTTP body for the response."""
         body = {"status": self.code, "message": self.get_description(environ)}
 
