@@ -148,20 +148,9 @@ def set_kerberos_env():
         os.environ["KRB5_CONFIG"] = previous_config
 
 
-"""
-@pytest.fixture(scope="module")
-def extra_entry_points(datasets_model):
-    # Depending on the model fixtures forces the runtime models to register their
-    # entry points (via sys.meta_path) before the Invenio app is created, so the
-    # app discovers the ``/datasets/`` and ``/restricted-datasets/`` services and
-    # resources.
-    return {
-        "invenio_base.apps": [
-            "oarepo_kerberos = oarepo_kerberos.ext:OarepoKerberosExt",
-        ],
-        "invenio_base.api_apps": ["oarepo_kerberos = oarepo_kerberos.ext:OarepoKerberosExt"],
-    }
-"""
+@pytest.fixture
+def record_data():
+    return {"metadata": {"title": "test"}, "files": {"enabled": False}}
 
 
 @pytest.fixture(scope="module")

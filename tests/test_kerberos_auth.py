@@ -21,26 +21,31 @@ def test_setup(service, datasets_model, users):
     datasets_model.Record.index.refresh()
 
 
-def test_kerberos_auth_401_no_user_in_db(run_flask_in_background, test_setup, kerberos_auth, search_clear):
+def test_kerberos_auth_401_no_user_in_db(
+    run_flask_in_background, record_data, datasets_model, kerberos_auth, search_clear
+):
     """Test a failed POST request due to non-existing UserIdentity."""
     url = "http://localhost:5000/datasets"
-    response = requests.post(url, auth=kerberos_auth, timeout=60)
+    response = requests.post(url, auth=kerberos_auth, json=record_data, timeout=60)
     assert response.status_code == 401
 
 
 def test_kerberos_auth_401_optional_auth_no_user_in_db(
-    run_flask_in_background, test_setup, optional_auth, search_clear
+    run_flask_in_background, record_data, datasets_model, optional_auth, search_clear
 ):
     """Test a failed POST request with optional authentication but no UserIdentity."""
     url = "http://localhost:5000/datasets"
-    response = requests.post(url, auth=optional_auth, timeout=60)
+    response = requests.post(url, auth=optional_auth, json=record_data, timeout=60)
     assert response.status_code == 401
 
 
-def test_kerberos_auth_401_disabled_auth(run_flask_in_background, test_setup, disabled_auth, search_clear):
+# TODO: this is not test on disabled auth itself but disabled mutual auth - do we want requests with disabled mutual auth to fail?
+def test_kerberos_auth_401_disabled_auth(
+    run_flask_in_background, record_data, datasets_model, kerberos_identity, disabled_auth, search_clear
+):
     """Test a failed POST request due to disabled client authentication ."""
     url = "http://localhost:5000/datasets"
-    response = requests.post(url, auth=disabled_auth, timeout=60)
+    response = requests.post(url, auth=disabled_auth, json=record_data, timeout=60)
     assert response.status_code == 401
 
 
@@ -54,7 +59,8 @@ def test_get_request_200(run_flask_in_background, test_setup, kerberos_auth, ker
 
 
 def test_get_request_200_forced_auth(
-    test_setup,
+    datasets_model,
+    record_data,
     service,
     users,
     run_flask_in_background,
@@ -63,6 +69,9 @@ def test_get_request_200_forced_auth(
     search_clear,
 ):
     """Test a successful GET request, not authentication."""
+    service.create(users[0].identity, record_data)
+    datasets_model.Record.index.refresh()
+
     anonymous = Identity(None)
     anonymous.provides.add(any_user)
 
@@ -75,32 +84,45 @@ def test_get_request_200_forced_auth(
     assert len(response.json()["hits"]["hits"]) == 1
 
 
-def test_kerberos_auth_201(run_flask_in_background, test_setup, kerberos_auth, kerberos_identity, search_clear):
+def test_response_unauth(
+    run_flask_in_background, record_data, datasets_model, kerberos_auth, kerberos_identity, search_clear
+):
     """Test a successful POST request with kerberos authentication."""
     url = "http://localhost:5000/datasets"
-    response = requests.post(
-        url, auth=kerberos_auth, json={"metadata": {"title": "title"}, "files": {"enabled": False}}, timeout=60
-    )
+    response = requests.post(url, json=record_data, timeout=60)
+    assert response.status_code == 401
+
+
+def test_response_original_login(logged_client, datasets_model, record_data, users, kerberos_identity, search_clear):
+    """Test a successful POST request with kerberos authentication."""
+    response = logged_client(users[0]).post("/datasets", json=record_data)
+    assert response.status_code == 201
+
+
+def test_kerberos_auth_201(
+    run_flask_in_background, client, datasets_model, record_data, kerberos_auth, kerberos_identity, search_clear
+):
+    """Test a successful POST request with kerberos authentication."""
+    url = "http://localhost:5000/datasets"
+    response = requests.post(url, auth=kerberos_auth, json=record_data, timeout=60)
     assert response.status_code == 201
 
 
 def test_kerberos_auth_401_disabled_auth_with_user(
-    run_flask_in_background, test_setup, disabled_auth, kerberos_identity, search_clear
+    run_flask_in_background, datasets_model, record_data, disabled_auth, kerberos_identity, search_clear
 ):
     """Test a failed POST request due to disabled client authentication but with correct UserIdentity."""
     url = "http://localhost:5000/datasets"
-    response = requests.post(url, auth=disabled_auth, timeout=60)
+    response = requests.post(url, auth=disabled_auth, json=record_data, timeout=60)
     assert response.status_code == 401
 
 
 def test_kerberos_auth_201_optional_auth_with_user(
-    run_flask_in_background, test_setup, optional_auth, kerberos_identity, search_clear
+    run_flask_in_background, datasets_model, record_data, test_setup, optional_auth, kerberos_identity, search_clear
 ):
     """Test a successful POST request with optional authentication and correct UserIdentity."""
     url = "http://localhost:5000/datasets"
-    response = requests.post(
-        url, auth=optional_auth, json={"metadata": {"title": "title"}, "files": {"enabled": False}}, timeout=60
-    )
+    response = requests.post(url, auth=optional_auth, json=record_data, timeout=60)
     assert response.status_code == 201
 
 
@@ -116,7 +138,7 @@ def test_kerberos_auth_201_optional_auth_with_user(
     ],
     ids=["gsserror", "binascii-error"],
 )
-def test_kerberos_auth_401_on_invalid_negotiate_token(run_flask_in_background, bad_token):
+def test_kerberos_auth_401_on_invalid_negotiate_token(run_flask_in_background, datasets_model, record_data, bad_token):
     """A malformed/invalid Negotiate token must re-challenge with 401, not 500.
 
     ``GSSAPI.authenticate`` raises (``GSSError`` for an undecryptable token,
@@ -125,6 +147,6 @@ def test_kerberos_auth_401_on_invalid_negotiate_token(run_flask_in_background, b
     rather than letting it surface as a 500 Internal Server Error.
     """
     url = "http://localhost:5000/datasets"
-    response = requests.post(url, headers={"Authorization": f"Negotiate {bad_token}"}, timeout=60)
+    response = requests.post(url, headers={"Authorization": f"Negotiate {bad_token}"}, json=record_data, timeout=60)
     assert response.status_code == 401
     assert "Negotiate" in response.headers.get("WWW-Authenticate", "")
