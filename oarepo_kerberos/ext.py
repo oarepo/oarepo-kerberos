@@ -9,23 +9,15 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from flask import Flask, Response
+    from flask import Flask
 
-import flask_login
-from flask import g
 from flask_gssapi import GSSAPI
-from flask_login import current_user
-from gssapi.raw.misc import GSSError
-from invenio_accounts.models import UserIdentity
 
 from .cli import kerberos
-from .resources.negotiate import NegotiateAuthentication
 
 log = logging.getLogger(__name__)
 logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)

@@ -12,9 +12,10 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
 import flask_login
-from flask import g, current_app
+from flask import current_app, g
 from flask_login import current_user
 from gssapi.raw.misc import GSSError
 from invenio_accounts.models import UserIdentity
@@ -28,9 +29,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 
-class KerberosProvider(AuthProvider):
 
-    def before_request(self) -> tuple[str | None, Exception | None]:
+class KerberosProvider(AuthProvider):
+    """Kerberos authentication provider."""
+
+    def before_request(self) -> str | None:
         """Authenticate the user before handling the request.
 
         Executed before each request. Uses GSSAPI to authenticate the user and log them in if successful.
@@ -42,7 +45,7 @@ class KerberosProvider(AuthProvider):
         gssapi = current_app.extensions.get("oarepo-gssapi")
 
         if gssapi is None:
-            return None, None
+            return None
         try:
             username, out_token = gssapi.authenticate()
         except (GSSError, binascii.Error) as exc:  # TODO: claude suggestion
@@ -52,7 +55,7 @@ class KerberosProvider(AuthProvider):
             # conditions, not server faults, so re-challenge with a 401 Negotiate
             # instead of letting the exception surface as a 500.
             log.warning("Kerberos negotiation failed for Negotiate request.", exc_info=True)
-            return None, NegotiateAuthentication()
+            raise NegotiateAuthentication from exc
 
         if username:  # TODO: originally "username and out_token"
             realm = username.split("@")[-1]
@@ -66,15 +69,12 @@ class KerberosProvider(AuthProvider):
                 if out_token:
                     g.kerberos_out_token = out_token
             else:
-                log.debug(
-                    "No matching identity found for Kerberos user."
-                )
-                return None, NegotiateAuthentication()
-            return username, None
-        return None, None
+                log.debug("No matching identity found for Kerberos user.")
+                raise NegotiateAuthentication
+            return cast("str", username)
+        return None
 
-
-    def after_request(self, response: Response) -> Response:
+    def after_request(self, response: Response) -> Response | None:
         """Modify the response after handling the request.
 
         Executed after each request. Adds Kerberos tokens to the response headers or prompts for authentication

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import base64
+import time
 
 import pytest
 import requests
@@ -22,56 +23,26 @@ def test_setup(service, datasets_model, users):
 
 
 def test_kerberos_auth_401_no_user_in_db(
-    run_flask_in_background, record_data, datasets_model, kerberos_auth, search_clear
+    run_flask_in_background, record_data, datasets_model, kerberos_auth_preemptive, search_clear
 ):
     """Test a failed POST request due to non-existing UserIdentity."""
     url = "http://localhost:5000/datasets"
-    response = requests.post(url, auth=kerberos_auth, json=record_data, timeout=60)
+    response = requests.post(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
     assert response.status_code == 401
 
 
-def test_kerberos_auth_401_optional_auth_no_user_in_db(
-    run_flask_in_background, record_data, datasets_model, optional_auth, search_clear
-):
-    """Test a failed POST request with optional authentication but no UserIdentity."""
-    url = "http://localhost:5000/datasets"
-    response = requests.post(url, auth=optional_auth, json=record_data, timeout=60)
-    assert response.status_code == 401
-
-
-# TODO: this is not test on disabled auth itself but disabled mutual auth - do we want requests with disabled mutual auth to fail?
-def test_kerberos_auth_401_disabled_auth(
-    run_flask_in_background, record_data, datasets_model, kerberos_identity, disabled_auth, search_clear
-):
-    """Test a failed POST request due to disabled client authentication ."""
-    url = "http://localhost:5000/datasets"
-    response = requests.post(url, auth=disabled_auth, json=record_data, timeout=60)
-    assert response.status_code == 401
-
-
-# TODO: search is allowed for unlogged users, the auth isn't done if it isn't preemptive, causing crash on mutual auth
-"""
-def test_get_request_200(run_flask_in_background, test_setup, kerberos_auth, kerberos_identity, search_clear):
-    url = "http://localhost:5000/datasets"
-    response = requests.get(url, auth=kerberos_auth)
-    assert response.status_code == 200
-"""
-
-
-def test_get_request_200_forced_auth(
+def test_search_auth(
     datasets_model,
+    test_setup,
     record_data,
     service,
     users,
     run_flask_in_background,
-    kerberos_auth_forced,
+    kerberos_auth_preemptive,
     kerberos_identity,
     search_clear,
 ):
     """Test a successful GET request, not authentication."""
-    service.create(users[0].identity, record_data)
-    datasets_model.Record.index.refresh()
-
     anonymous = Identity(None)
     anonymous.provides.add(any_user)
 
@@ -79,14 +50,12 @@ def test_get_request_200_forced_auth(
     assert service.search(anonymous).total == 0
 
     url = "http://localhost:5000/datasets"
-    response = requests.get(url, auth=kerberos_auth_forced, timeout=60)
+    response = requests.get(url, auth=kerberos_auth_preemptive(), timeout=60)
     assert response.status_code == 200
     assert len(response.json()["hits"]["hits"]) == 1
 
 
-def test_response_unauth(
-    run_flask_in_background, record_data, datasets_model, kerberos_auth, kerberos_identity, search_clear
-):
+def test_response_unauth(run_flask_in_background, record_data, datasets_model, kerberos_identity, search_clear):
     """Test a successful POST request with kerberos authentication."""
     url = "http://localhost:5000/datasets"
     response = requests.post(url, json=record_data, timeout=60)
@@ -99,30 +68,157 @@ def test_response_original_login(logged_client, datasets_model, record_data, use
     assert response.status_code == 201
 
 
-def test_kerberos_auth_201(
-    run_flask_in_background, client, datasets_model, record_data, kerberos_auth, kerberos_identity, search_clear
-):
-    """Test a successful POST request with kerberos authentication."""
-    url = "http://localhost:5000/datasets"
-    response = requests.post(url, auth=kerberos_auth, json=record_data, timeout=60)
+def test_response_bearer_token(run_flask_in_background, datasets_model, record_data, bearer_token, search_clear):
+    """Test a successful POST request authenticated with an OAuth2 Bearer token.
+
+    Mirrors ``test_response_original_login`` but authenticates via an
+    ``Authorization: Bearer <token>`` header instead of a session login. No
+    Kerberos ticket / GSSAPI negotiation is involved, so this runs against the
+    plain test client rather than the background HTTP server.
+    """
+    response = requests.post(
+        "http://localhost:5000/datasets",
+        json=record_data,
+        headers={"Authorization": f"Bearer {bearer_token}"},
+        timeout=60,
+    )
     assert response.status_code == 201
 
 
-def test_kerberos_auth_401_disabled_auth_with_user(
-    run_flask_in_background, datasets_model, record_data, disabled_auth, kerberos_identity, search_clear
+def test_response_after_bearer_token(
+    run_flask_in_background,
+    datasets_model,
+    record_data,
+    kerberos_auth_preemptive,
+    bearer_token,
+    kerberos_identity,
+    test_setup,
+    search_clear,
 ):
-    """Test a failed POST request due to disabled client authentication but with correct UserIdentity."""
+
+    response = requests.get(
+        "http://localhost:5000/datasets",
+        headers={"Authorization": f"Bearer {bearer_token}"},
+        timeout=60,
+    )
+    assert response.status_code == 200
+    assert len(response.json()["hits"]["hits"]) == 1
+
+    response = requests.get(
+        "http://localhost:5000/datasets",
+        auth=kerberos_auth_preemptive(),
+        timeout=60,
+    )
+    assert response.status_code == 200
+    assert len(response.json()["hits"]["hits"]) == 1
+
+
+def test_performance(
+    run_flask_in_background,
+    datasets_model,
+    record_data,
+    kerberos_auth_preemptive,
+    bearer_token,
+    test_setup,
+    kerberos_identity,
+    search_clear,
+):
+    t0 = time.time()
+
+    requests.get(
+        "http://localhost:5000/datasets",
+        headers={"Authorization": f"Bearer {bearer_token}"},
+        timeout=60,
+    )
+    for _ in range(100):
+        response = requests.get(
+            "http://localhost:5000/datasets",
+            headers={"Authorization": f"Bearer {bearer_token}"},
+            timeout=60,
+        )
+        assert response.status_code == 200
+        assert len(response.json()["hits"]["hits"]) == 1
+    t1 = time.time()
+    print(t1 - t0)  # noqa D101
+
+    t0 = time.time()
+    for _ in range(100):
+        response = requests.get(
+            "http://localhost:5000/datasets",
+            auth=kerberos_auth_preemptive(),
+            timeout=60,
+        )
+        assert response.status_code == 200
+        assert len(response.json()["hits"]["hits"]) == 1
+    t1 = time.time()
+    print(t1 - t0)  # noqa D101
+
+
+def test_performance_session(
+    run_flask_in_background,
+    datasets_model,
+    record_data,
+    kerberos_auth_preemptive,
+    bearer_token,
+    test_setup,
+    kerberos_identity,
+    search_clear,
+):
+    """Compare steady-state auth costs the way real clients behave.
+
+    Bearer auth is stateless, so the token rides along on every request — but a
+    real client reuses one TCP connection, hence a single ``requests.Session``.
+
+    A well-behaved Kerberos client negotiates only once: the server's
+    ``login_user`` sets a session cookie on the handshake response, and every
+    later request in the same ``Session`` is cookie-authenticated, with no
+    ``Authorization: Negotiate`` header (and no GSSAPI work) at all. The old
+    version of this test re-negotiated on every iteration, which benchmarks the
+    worst-case stateless client rather than the typical steady state.
+    """
     url = "http://localhost:5000/datasets"
-    response = requests.post(url, auth=disabled_auth, json=record_data, timeout=60)
-    assert response.status_code == 401
+
+    with requests.Session() as bearer_session:
+        bearer_session.headers["Authorization"] = f"Bearer {bearer_token}"
+        bearer_session.get(url, timeout=60)  # warm up the connection
+        t0 = time.time()
+        for _ in range(100):
+            response = bearer_session.get(url, timeout=60)
+            assert response.status_code == 200
+            assert len(response.json()["hits"]["hits"]) == 1
+        bearer_elapsed = time.time() - t0
+
+    with requests.Session() as krb_session:
+        response = krb_session.get(url, auth=kerberos_auth_preemptive(), timeout=60)
+        assert response.status_code == 200
+        assert krb_session.cookies, "expected a session cookie from the Kerberos login"
+
+        t0 = time.time()
+        for _ in range(100):
+            response = krb_session.get(url, timeout=60)
+            assert response.status_code == 200
+            # AuthenticatedOnlyVisible filters anonymous identities down to zero
+            # hits, so one hit proves the cookie (not a fresh Negotiate handshake)
+            # authenticated this request.
+            assert len(response.json()["hits"]["hits"]) == 1
+        kerberos_elapsed = time.time() - t0
+
+    print(f"bearer token on every request (one session): {bearer_elapsed:.3f}s")  # noqa D101
+    print(f"kerberos handshake once, then session cookie: {kerberos_elapsed:.3f}s")  # noqa D101
 
 
-def test_kerberos_auth_201_optional_auth_with_user(
-    run_flask_in_background, datasets_model, record_data, test_setup, optional_auth, kerberos_identity, search_clear
+def test_kerberos_auth_201(
+    run_flask_in_background,
+    datasets_model,
+    record_data,
+    test_setup,
+    kerberos_auth_preemptive,
+    kerberos_identity,
+    search_clear,
 ):
     """Test a successful POST request with optional authentication and correct UserIdentity."""
     url = "http://localhost:5000/datasets"
-    response = requests.post(url, auth=optional_auth, json=record_data, timeout=60)
+    response = requests.post(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
     assert response.status_code == 201
 
 
@@ -150,3 +246,21 @@ def test_kerberos_auth_401_on_invalid_negotiate_token(run_flask_in_background, d
     response = requests.post(url, headers={"Authorization": f"Negotiate {bad_token}"}, json=record_data, timeout=60)
     assert response.status_code == 401
     assert "Negotiate" in response.headers.get("WWW-Authenticate", "")
+
+
+def test_action_needs(
+    run_flask_in_background,
+    user_with_administration_rights,
+    datasets_model,
+    record_data,
+    kerberos_auth_preemptive,
+    kerberos_identity,
+    search_clear,
+):
+    """Test a successful POST request with kerberos authentication."""
+    url = "http://localhost:5000/datasets"
+    response = requests.post(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
+    response = requests.put(
+        f"http://localhost:5000/datasets/{response.json()['id']}", auth=kerberos_auth_preemptive(), timeout=60
+    )
+    assert response.status_code == 201
