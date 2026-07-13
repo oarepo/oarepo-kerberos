@@ -47,9 +47,6 @@ include = [
     "/oarepo_kerberos",
 ]
 
-[[tool.mypy.overrides]]
-follow_untyped_imports = true
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

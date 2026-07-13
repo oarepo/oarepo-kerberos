@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from flask import Response
 
 log = logging.getLogger(__name__)
-logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 
 
 class KerberosProvider(AuthProvider):
@@ -48,7 +47,7 @@ class KerberosProvider(AuthProvider):
             return None
         try:
             username, out_token = gssapi.authenticate()
-        except (GSSError, binascii.Error) as exc:  # TODO: claude suggestion
+        except (GSSError, binascii.Error) as exc:
             # A Negotiate header was present but the token could not be validated:
             # a bad/expired/replayed ticket, a malformed (non-base64) token, or a
             # service keytab out of sync with the KDC. These are client/auth

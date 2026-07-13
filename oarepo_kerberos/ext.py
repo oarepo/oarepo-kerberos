@@ -12,18 +12,14 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from flask_resources import HTTPJSONException, create_error_handler
-
 if TYPE_CHECKING:
     from flask import Flask
 
 from flask_gssapi import GSSAPI
-from oarepo_runtime.errors import AuthExceptionGroup
 
 from .cli import kerberos
 
 log = logging.getLogger(__name__)
-logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 
 
 class OarepoKerberosExt:
@@ -55,12 +51,3 @@ class OarepoKerberosExt:
         app.extensions["oarepo-gssapi"] = self.gssapi = GSSAPI(app)
 
         app.cli.add_command(kerberos)
-        app.register_error_handler(  # TODO: move to runtime; perhaps throw away the model handler
-            AuthExceptionGroup,
-            create_error_handler(
-                lambda exc: HTTPJSONException(  # noqa ARG005
-                    code=401,
-                    description="Authentication failed.",
-                )
-            ),
-        )

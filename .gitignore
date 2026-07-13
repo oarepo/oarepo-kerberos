@@ -16,3 +16,4 @@ todo.md
 .DS_Store
 .runner.sh
 .env-services
+tests/flask.keytab

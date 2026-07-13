@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import base64
-import time
 
 import pytest
 import requests
@@ -111,100 +110,6 @@ def test_response_after_bearer_token(
     )
     assert response.status_code == 200
     assert len(response.json()["hits"]["hits"]) == 1
-
-
-def test_performance(
-    run_flask_in_background,
-    datasets_model,
-    record_data,
-    kerberos_auth_preemptive,
-    bearer_token,
-    test_setup,
-    kerberos_identity,
-    search_clear,
-):
-    t0 = time.time()
-
-    requests.get(
-        "http://localhost:5000/datasets",
-        headers={"Authorization": f"Bearer {bearer_token}"},
-        timeout=60,
-    )
-    for _ in range(100):
-        response = requests.get(
-            "http://localhost:5000/datasets",
-            headers={"Authorization": f"Bearer {bearer_token}"},
-            timeout=60,
-        )
-        assert response.status_code == 200
-        assert len(response.json()["hits"]["hits"]) == 1
-    t1 = time.time()
-    print(t1 - t0)  # noqa D101
-
-    t0 = time.time()
-    for _ in range(100):
-        response = requests.get(
-            "http://localhost:5000/datasets",
-            auth=kerberos_auth_preemptive(),
-            timeout=60,
-        )
-        assert response.status_code == 200
-        assert len(response.json()["hits"]["hits"]) == 1
-    t1 = time.time()
-    print(t1 - t0)  # noqa D101
-
-
-def test_performance_session(
-    run_flask_in_background,
-    datasets_model,
-    record_data,
-    kerberos_auth_preemptive,
-    bearer_token,
-    test_setup,
-    kerberos_identity,
-    search_clear,
-):
-    """Compare steady-state auth costs the way real clients behave.
-
-    Bearer auth is stateless, so the token rides along on every request — but a
-    real client reuses one TCP connection, hence a single ``requests.Session``.
-
-    A well-behaved Kerberos client negotiates only once: the server's
-    ``login_user`` sets a session cookie on the handshake response, and every
-    later request in the same ``Session`` is cookie-authenticated, with no
-    ``Authorization: Negotiate`` header (and no GSSAPI work) at all. The old
-    version of this test re-negotiated on every iteration, which benchmarks the
-    worst-case stateless client rather than the typical steady state.
-    """
-    url = "http://localhost:5000/datasets"
-
-    with requests.Session() as bearer_session:
-        bearer_session.headers["Authorization"] = f"Bearer {bearer_token}"
-        bearer_session.get(url, timeout=60)  # warm up the connection
-        t0 = time.time()
-        for _ in range(100):
-            response = bearer_session.get(url, timeout=60)
-            assert response.status_code == 200
-            assert len(response.json()["hits"]["hits"]) == 1
-        bearer_elapsed = time.time() - t0
-
-    with requests.Session() as krb_session:
-        response = krb_session.get(url, auth=kerberos_auth_preemptive(), timeout=60)
-        assert response.status_code == 200
-        assert krb_session.cookies, "expected a session cookie from the Kerberos login"
-
-        t0 = time.time()
-        for _ in range(100):
-            response = krb_session.get(url, timeout=60)
-            assert response.status_code == 200
-            # AuthenticatedOnlyVisible filters anonymous identities down to zero
-            # hits, so one hit proves the cookie (not a fresh Negotiate handshake)
-            # authenticated this request.
-            assert len(response.json()["hits"]["hits"]) == 1
-        kerberos_elapsed = time.time() - t0
-
-    print(f"bearer token on every request (one session): {bearer_elapsed:.3f}s")  # noqa D101
-    print(f"kerberos handshake once, then session cookie: {kerberos_elapsed:.3f}s")  # noqa D101
 
 
 def test_kerberos_auth_201(

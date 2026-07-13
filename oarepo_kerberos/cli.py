@@ -62,6 +62,12 @@ def remove_mapping(email: str, kerberos_id: str) -> None:
         return
 
     realm = kerberos_id.rsplit("@", maxsplit=1)[-1]
+    external_id = db.session.query(UserIdentity).filter_by(method=f"krb-{realm}", id=kerberos_id).one_or_none()
+
+    if not external_id:
+        click.echo(f"Error: Mapping to kerberos {kerberos_id} not found.")
+        return
+
     UserIdentity.delete_by_external_id(method=f"krb-{realm}", external_id=kerberos_id)
     db.session.commit()
 

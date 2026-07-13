@@ -82,7 +82,7 @@ def test_remove_non_existing_mapping(users, run_flask_in_background, kerberos_id
     )
 
     assert result.exit_code == 0
-    assert f"Mapping removed: {users[0].email} -> kerberos_mapping@ANOTHER-EXAMPLE.COM" in result.output
+    assert "Error: Mapping to kerberos kerberos_mapping@ANOTHER-EXAMPLE.COM not found." in result.output
 
     # Verify it was removed from the database
     user_identity = UserIdentity.get_user(
