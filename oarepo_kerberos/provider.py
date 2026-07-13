@@ -57,19 +57,19 @@ class KerberosProvider(AuthProvider):
             log.warning("Kerberos negotiation failed for Negotiate request.", exc_info=True)
             raise NegotiateAuthentication from exc
 
-        if username:  # TODO: originally "username and out_token"
+        if username:
             realm = username.split("@")[-1]
             identity = UserIdentity.query.filter(
                 UserIdentity.id == username,
                 UserIdentity.method == f"krb-{realm}",
             ).one_or_none()
 
-            if identity and flask_login.login_user(identity.user):  # TODO: test action needs
+            if identity and flask_login.login_user(identity.user):
                 log.debug("User %s authenticated and logged in.", username)
                 if out_token:
                     g.kerberos_out_token = out_token
             else:
-                log.debug("No matching identity found for Kerberos user.")
+                log.debug("No matching identity found for Kerberos user.")  # TODO: could also be deactivated user
                 raise NegotiateAuthentication
             return cast("str", username)
         return None
@@ -96,6 +96,7 @@ class KerberosProvider(AuthProvider):
             if current_user.is_authenticated:
                 return response
             # TODO: response status code is not equal to json message {'message': 'Permission denied.', 'status': 403}
+            # TODO: what about after_request of providers after this?
             response.status_code = 401
             response.headers["WWW-Authenticate"] = "Negotiate"
 

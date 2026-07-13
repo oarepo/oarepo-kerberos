@@ -257,10 +257,32 @@ def test_action_needs(
     kerberos_identity,
     search_clear,
 ):
-    """Test a successful POST request with kerberos authentication."""
     url = "http://localhost:5000/datasets"
     response = requests.post(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
     response = requests.put(
-        f"http://localhost:5000/datasets/{response.json()['id']}", auth=kerberos_auth_preemptive(), timeout=60
+        f"http://localhost:5000/datasets/{response.json()['id']}",
+        auth=kerberos_auth_preemptive(),
+        json=record_data,
+        timeout=60,
     )
-    assert response.status_code == 201
+    assert response.status_code == 200
+
+
+def test_non_model_endpoint(
+    run_flask_in_background,
+    datasets_model,
+    record_data,
+    kerberos_auth_preemptive,
+    search_clear,
+):
+    """A valid ticket without a matching UserIdentity must 401-challenge everywhere.
+
+    ``/users`` is not a model resource, so it has no resource-level error handler to
+    turn the provider's ``NegotiateAuthentication`` into a response. The runtime wraps
+    that exception in an ``AuthExceptionGroup``; without the global fallback handler it
+    would surface as a 500. The fallback must re-challenge with 401 Negotiate instead.
+    """
+    url = "http://localhost:5000/users"
+    response = requests.get(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
+    assert response.status_code == 401
+    assert "Negotiate" in response.headers.get("WWW-Authenticate", "")

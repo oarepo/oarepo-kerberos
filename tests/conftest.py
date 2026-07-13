@@ -173,7 +173,6 @@ def app_config(app_config):
     app_config["RECORDS_REFRESOLVER_STORE"] = "invenio_jsonschemas.proxies.current_refresolver_store"
     app_config["GSSAPI_HOSTNAME"] = "localhost"
     app_config["CACHE_TYPE"] = "redis"
-    app_config["GSSAPI_SERVICE_NAME"] = "host"
 
     # The session-based Kerberos tests ride the login session cookie over plain
     # http (the background server has no TLS). Talisman defaults to
@@ -205,7 +204,7 @@ def kerberos_auth_preemptive():
     """
 
     def _make() -> HTTPKerberosAuth:
-        return HTTPKerberosAuth(mutual_authentication=REQUIRED, force_preemptive=True, service="host")
+        return HTTPKerberosAuth(mutual_authentication=REQUIRED, force_preemptive=True)
 
     return _make
 
