@@ -12,9 +12,8 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-import flask_login
 from flask import current_app, g
 from flask_login import current_user
 from gssapi.raw.misc import GSSError
@@ -25,6 +24,7 @@ from .resources.negotiate import NegotiateAuthentication
 
 if TYPE_CHECKING:
     from flask import Response
+    from invenio_accounts.models import User
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 class KerberosProvider(AuthProvider):
     """Kerberos authentication provider."""
 
-    def before_request(self) -> str | None:
+    def before_request(self) -> User | None:
         """Authenticate the user before handling the request.
 
         Executed before each request. Uses GSSAPI to authenticate the user and log them in if successful.
@@ -63,14 +63,15 @@ class KerberosProvider(AuthProvider):
                 UserIdentity.method == f"krb-{realm}",
             ).one_or_none()
 
-            if identity and flask_login.login_user(identity.user):
-                log.debug("User %s authenticated and logged in.", username)
-                if out_token:
-                    g.kerberos_out_token = out_token
-            else:
-                log.debug("No matching identity found for Kerberos user.")  # TODO: could also be deactivated user
+            if identity is None or identity.user is None:
+                log.debug("No matching identity found for Kerberos user.")
                 raise NegotiateAuthentication
-            return cast("str", username)
+
+            log.debug("User %s authenticated.", username)
+            if out_token:
+                g.kerberos_out_token = out_token
+            return identity.user
+
         return None
 
     def after_request(self, response: Response) -> Response | None:
