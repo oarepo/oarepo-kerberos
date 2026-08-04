@@ -12,10 +12,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from oarepo_kerberos.ext import OarepoKerberosExt
+    from oarepo_kerberos.ext import KerberosExt
 
 from flask import current_app
 from werkzeug.local import LocalProxy
 
-current_kerberos: OarepoKerberosExt = LocalProxy(lambda: current_app.extensions["oarepo-kerberos"])  # type: ignore[assignment]
+current_kerberos: KerberosExt = LocalProxy(lambda: current_app.extensions["oarepo-kerberos"])  # type: ignore[assignment]
 """Helper proxy to get the current kerberos authentication extension."""

@@ -21,7 +21,7 @@ from gssapi.raw.misc import GSSError
 from invenio_accounts.models import UserIdentity
 from oarepo_runtime.ext import AuthProvider
 
-from .resources.negotiate import NegotiateAuthentication
+from oarepo_kerberos.errors import AccessDenied, NegotiateAuthentication
 
 if TYPE_CHECKING:
     from flask import Response
@@ -45,6 +45,10 @@ class KerberosProvider(AuthProvider):
 
         if gssapi is None:
             return None
+
+        if current_user.is_authenticated:
+            return None
+
         try:
             username, out_token = gssapi.authenticate()
         except (GSSError, binascii.Error) as exc:
@@ -68,8 +72,9 @@ class KerberosProvider(AuthProvider):
                 if out_token:
                     g.kerberos_out_token = out_token
             else:
-                log.debug("No matching identity found for Kerberos user.")  # TODO: could also be deactivated user
-                raise NegotiateAuthentication
+                log.debug("No matching identity found for Kerberos user.")
+                g.not_negotiate_auth = True
+                raise AccessDenied
             return cast("str", username)
         return None
 
@@ -86,17 +91,21 @@ class KerberosProvider(AuthProvider):
             Response: The modified HTTP response object.
 
         """
+        if current_app.extensions.get("oarepo-gssapi") is None:
+            return None
+
         if hasattr(g, "kerberos_out_token") and g.kerberos_out_token:
             b64_token = base64.b64encode(g.kerberos_out_token).decode("utf-8")
             auth_data = f"Negotiate {b64_token}"
             response.headers["WWW-Authenticate"] = auth_data
+            return response
 
-        elif response.status_code in (401, 403):
-            if current_user.is_authenticated:
+        if response.status_code in (401, 403):
+            if current_user.is_authenticated or (hasattr(g, "not_negotiate_auth") and g.not_negotiate_auth):
                 return response
             # TODO: response status code is not equal to json message {'message': 'Permission denied.', 'status': 403}
-            # TODO: what about after_request of providers after this?
             response.status_code = 401
             response.headers["WWW-Authenticate"] = "Negotiate"
+            return response
 
-        return response
+        return None  # so the next provider can handle it

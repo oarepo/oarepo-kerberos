@@ -30,10 +30,10 @@ oarepo14 = [
 ]
 
 [project.entry-points."invenio_base.apps"]
-oarepo_kerberos = "oarepo_kerberos.ext:OarepoKerberosExt"
+oarepo_kerberos = "oarepo_kerberos.ext:KerberosExt"
 
 [project.entry-points."invenio_base.api_apps"]
-oarepo_kerberos = "oarepo_kerberos.ext:OarepoKerberosExt"
+oarepo_kerberos = "oarepo_kerberos.ext:KerberosExt"
 
 [project.entry-points."flask.commands"]
 oarepo_kerberos = "oarepo_kerberos.cli:kerberos"

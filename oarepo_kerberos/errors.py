@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, override
 
+from flask import g
 from flask_resources import HTTPJSONException
 
 if TYPE_CHECKING:
@@ -35,3 +36,13 @@ class NegotiateAuthentication(HTTPJSONException):
         headers = super().get_headers(environ, scope)
         headers.append(("WWW-Authenticate", "Negotiate"))
         return headers  # type:ignore[no-any-return]
+
+
+class AccessDenied(HTTPJSONException):
+    """401 deny access."""
+
+    description = "Access is denied for this resource."
+
+    def __init__(self, **kwargs: Any) -> None:
+        """Construct."""
+        super().__init__(code=401, **kwargs)

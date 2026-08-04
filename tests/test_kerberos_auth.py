@@ -28,6 +28,7 @@ def test_kerberos_auth_401_no_user_in_db(
     url = "http://localhost:5000/datasets"
     response = requests.post(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
     assert response.status_code == 401
+    assert "Negotiate" not in response.headers.get("WWW-Authenticate", "")
 
 
 def test_search_auth(
@@ -190,4 +191,3 @@ def test_non_model_endpoint(
     url = "http://localhost:5000/users"
     response = requests.get(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
     assert response.status_code == 401
-    assert "Negotiate" in response.headers.get("WWW-Authenticate", "")

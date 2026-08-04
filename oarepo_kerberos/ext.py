@@ -22,7 +22,7 @@ from .cli import kerberos
 log = logging.getLogger(__name__)
 
 
-class OarepoKerberosExt:
+class KerberosExt:
     """OarepoKerberosExt is an extension for Flask applications to handle.
 
     Kerberos authentication using GSSAPI. It initializes the GSSAPI,
@@ -48,6 +48,7 @@ class OarepoKerberosExt:
             app (Flask): The Flask application instance.
         """
         app.extensions["oarepo-kerberos"] = self
-        app.extensions["oarepo-gssapi"] = self.gssapi = GSSAPI(app)
+        if app.config.get("KERBEROS_ENABLED", False):
+            app.extensions["oarepo-gssapi"] = self.gssapi = GSSAPI(app)
 
         app.cli.add_command(kerberos)
