@@ -80,7 +80,6 @@ class KerberosProvider(AuthProvider):
             raise NegotiateAuthentication from exc
 
         g.kerberos_out_token = out_token
-
         # single leg auth is only valid if we get username
         if username:
             realm = username.split("@")[-1]
@@ -91,6 +90,7 @@ class KerberosProvider(AuthProvider):
 
             if identity is None or identity.user is None or not identity.user.is_active:
                 log.error("No matching identity found for Kerberos user %s.", username)
+                g.kerberos_out_token = None
                 raise AccessDenied
 
             log.debug("User %s prepared for login through Kerberos.", username)
