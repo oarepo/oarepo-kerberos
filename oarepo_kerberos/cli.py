@@ -62,7 +62,9 @@ def remove_mapping(email: str, kerberos_id: str) -> None:
         return
 
     realm = kerberos_id.rsplit("@", maxsplit=1)[-1]
-    external_id = db.session.query(UserIdentity).filter_by(method=f"krb-{realm}", id=kerberos_id).one_or_none()
+    external_id = (
+        db.session.query(UserIdentity).filter_by(method=f"krb-{realm}", id=kerberos_id, id_user=user.id).one_or_none()
+    )
 
     if not external_id:
         click.echo(f"Error: Mapping to kerberos {kerberos_id} not found.")
@@ -78,7 +80,11 @@ def remove_mapping(email: str, kerberos_id: str) -> None:
 @click.option("--email", default=None, help="Filter by email.")
 def get_mapping(email: str | None) -> None:
     """List all Kerberos mappings or specific user mapping."""
-    query = db.session.query(User.email, UserIdentity.id).join(UserIdentity, User.id == UserIdentity.id_user)
+    query = (
+        db.session.query(User.email, UserIdentity.id)
+        .join(UserIdentity, User.id == UserIdentity.id_user)
+        .filter(UserIdentity.method.like("krb-%"))
+    )
     if email:
         query = query.filter(User.email == email)
 

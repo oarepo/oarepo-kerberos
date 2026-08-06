@@ -17,3 +17,5 @@ todo.md
 .runner.sh
 .env-services
 tests/flask.keytab
+.ruff.toml
+.mypy.ini

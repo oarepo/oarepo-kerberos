@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, override
 
-from flask import g
 from flask_resources import HTTPJSONException
 
 if TYPE_CHECKING:
@@ -38,11 +37,39 @@ class NegotiateAuthentication(HTTPJSONException):
         return headers  # type:ignore[no-any-return]
 
 
+class ConflictingAuthentication(HTTPJSONException):
+    """400 refusal of a request that carries two sets of credentials."""
+
+    description = (
+        "This request carries both a login session and Negotiate credentials. Send only one: "
+        "drop the session cookie to authenticate with Kerberos, or omit the Authorization "
+        "header to use the session."
+    )
+
+    def __init__(self, **kwargs: Any) -> None:
+        """Construct."""
+        super().__init__(code=400, **kwargs)
+
+
+class MultiLegNegotiateUnsupported(HTTPJSONException):
+    """501 refusal of a negotiation this deployment cannot complete."""
+
+    description = (
+        "This SPNEGO exchange needs more than one round trip, which this server does not "
+        "implement. Present a credential that authenticates in a single leg, such as a "
+        "Kerberos service ticket for this host."
+    )
+
+    def __init__(self, **kwargs: Any) -> None:
+        """Construct."""
+        super().__init__(code=501, **kwargs)
+
+
 class AccessDenied(HTTPJSONException):
-    """401 deny access."""
+    """403 deny access."""
 
     description = "Access is denied for this resource."
 
     def __init__(self, **kwargs: Any) -> None:
         """Construct."""
-        super().__init__(code=401, **kwargs)
+        super().__init__(code=403, **kwargs)

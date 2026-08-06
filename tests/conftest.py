@@ -52,20 +52,7 @@ pytest_plugins = [
 
 
 class AuthenticatedOnlyVisible(Generator):
-    """Read generator whose *query filter* genuinely depends on the identity.
-
-    Invenio's own ``AuthenticatedUser.query_filter`` returns ``match_all``
-    unconditionally (see invenio_records_permissions.generators), so it does NOT
-    actually restrict *search* visibility by identity. This generator does:
-    authenticated identities match every record, anonymous identities match none.
-
-    It exists to expose an architectural gap in OarepoKerberosExt: identity is
-    established only by downgrading a 401/403 to a Negotiate challenge
-    (``after_request``). A search is gated by ``can_search`` (here open to anyone),
-    so it returns a *filtered 200*, never a 403 — the challenge never fires and the
-    Kerberos ticket-holder is filtered as an anonymous user. See
-    ``test_search_does_not_apply_kerberos_identity``.
-    """
+    """Read generator whose *query filter* depends on the identity."""
 
     @override
     def needs(self, **kwargs: Any) -> Collection[Need]:
@@ -171,6 +158,7 @@ def app_config(app_config):
     app_config["GSSAPI_HOSTNAME"] = "localhost"
     app_config["KERBEROS_ENABLED"] = True
 
+    # needed for session test
     # The session-based Kerberos tests ride the login session cookie over plain
     # http (the background server has no TLS). Talisman defaults to
     # ``session_cookie_secure=True`` (pytest-invenio only turns off ``force_https``),

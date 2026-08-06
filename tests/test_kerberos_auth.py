@@ -13,6 +13,7 @@ import pytest
 import requests
 from flask_principal import Identity
 from invenio_access import any_user
+from requests_kerberos import REQUIRED, HTTPKerberosAuth
 
 
 @pytest.fixture
@@ -21,13 +22,17 @@ def test_setup(service, datasets_model, users):
     datasets_model.Record.index.refresh()
 
 
-def test_kerberos_auth_401_no_user_in_db(
-    run_flask_in_background, record_data, datasets_model, kerberos_auth_preemptive, search_clear
+def test_kerberos_auth_403_no_user_in_db(
+    run_flask_in_background,
+    record_data,
+    datasets_model,
+    kerberos_auth_preemptive,
+    search_clear,
 ):
     """Test a failed POST request due to non-existing UserIdentity."""
     url = "http://localhost:5000/datasets"
     response = requests.post(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
-    assert response.status_code == 401
+    assert response.status_code == 403
     assert "Negotiate" not in response.headers.get("WWW-Authenticate", "")
 
 
@@ -42,7 +47,7 @@ def test_search_auth(
     kerberos_identity,
     search_clear,
 ):
-    """Test a successful GET request, not authentication."""
+    """Test a successful GET search request with preemptive auth."""
     anonymous = Identity(None)
     anonymous.provides.add(any_user)
 
@@ -55,17 +60,18 @@ def test_search_auth(
     assert len(response.json()["hits"]["hits"]) == 1
 
 
-def test_response_unauth(run_flask_in_background, record_data, datasets_model, kerberos_identity, search_clear):
-    """Test a successful POST request with kerberos authentication."""
+def test_response_unauth(
+    run_flask_in_background,
+    record_data,
+    datasets_model,
+    kerberos_identity,
+    search_clear,
+):
+    """Test whether anonymous request returns 401 and negotiate header."""
     url = "http://localhost:5000/datasets"
     response = requests.post(url, json=record_data, timeout=60)
     assert response.status_code == 401
-
-
-def test_response_original_login(logged_client, datasets_model, record_data, users, kerberos_identity, search_clear):
-    """Test a successful POST request with kerberos authentication."""
-    response = logged_client(users[0]).post("/datasets", json=record_data)
-    assert response.status_code == 201
+    assert "Negotiate" in response.headers.get("WWW-Authenticate", "")
 
 
 def test_response_bearer_token(run_flask_in_background, datasets_model, record_data, bearer_token, search_clear):
@@ -122,10 +128,53 @@ def test_kerberos_auth_201(
     kerberos_identity,
     search_clear,
 ):
-    """Test a successful POST request with optional authentication and correct UserIdentity."""
+    """Test a successful POST request with correct UserIdentity and preemptive auth."""
     url = "http://localhost:5000/datasets"
     response = requests.post(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
     assert response.status_code == 201
+
+
+def test_kerberos_auth_201_not_preemptive(
+    run_flask_in_background,
+    datasets_model,
+    record_data,
+    test_setup,
+    kerberos_identity,
+    search_clear,
+):
+    """Test a successful POST request with correct UserIdentity."""
+    url = "http://localhost:5000/datasets"
+    response = requests.post(
+        url,
+        auth=HTTPKerberosAuth(mutual_authentication=REQUIRED),
+        json=record_data,
+        timeout=60,
+    )
+    assert response.status_code == 201
+
+
+def test_session_cookie_with_negotiate_is_refused(
+    run_flask_in_background,
+    datasets_model,
+    record_data,
+    test_setup,
+    kerberos_auth_preemptive,
+    kerberos_identity,
+    search_clear,
+):
+    """A request carrying both a session cookie and a Negotiate token is refused terminally."""
+    url = "http://localhost:5000/datasets"
+    with requests.Session() as session:
+        response = session.post(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
+        assert response.status_code == 201
+
+        response = session.post(
+            url,
+            auth=HTTPKerberosAuth(force_preemptive=True),
+            json=record_data,
+            timeout=60,
+        )
+        assert response.status_code == 400
 
 
 @pytest.mark.parametrize(
@@ -149,9 +198,36 @@ def test_kerberos_auth_401_on_invalid_negotiate_token(run_flask_in_background, d
     rather than letting it surface as a 500 Internal Server Error.
     """
     url = "http://localhost:5000/datasets"
-    response = requests.post(url, headers={"Authorization": f"Negotiate {bad_token}"}, json=record_data, timeout=60)
+    response = requests.post(
+        url,
+        headers={"Authorization": f"Negotiate {bad_token}"},
+        json=record_data,
+        timeout=60,
+    )
     assert response.status_code == 401
     assert "Negotiate" in response.headers.get("WWW-Authenticate", "")
+
+
+def test_multi_leg_negotiate_is_not_implemented(
+    run_flask_in_background,
+    app,
+    datasets_model,
+    record_data,
+    search_clear,
+    monkeypatch,
+):
+    """An exchange needing a second round trip reports 501, not a 401 challenge."""
+    monkeypatch.setattr(app.extensions["oarepo-gssapi"], "authenticate", lambda: (None, None))
+
+    response = requests.post(
+        "http://localhost:5000/datasets",
+        headers={"Authorization": "Negotiate dGhlIHN0ZXAgaXMgcGF0Y2hlZA=="},
+        json=record_data,
+        timeout=60,
+    )
+    assert response.status_code == 501
+    assert "WWW-Authenticate" not in response.headers
+    assert "more than one round trip" in response.json()["message"]
 
 
 def test_action_needs(
@@ -181,13 +257,6 @@ def test_non_model_endpoint(
     kerberos_auth_preemptive,
     search_clear,
 ):
-    """A valid ticket without a matching UserIdentity must 401-challenge everywhere.
-
-    ``/users`` is not a model resource, so it has no resource-level error handler to
-    turn the provider's ``NegotiateAuthentication`` into a response. The runtime wraps
-    that exception in an ``AuthExceptionGroup``; without the global fallback handler it
-    would surface as a 500. The fallback must re-challenge with 401 Negotiate instead.
-    """
     url = "http://localhost:5000/users"
     response = requests.get(url, auth=kerberos_auth_preemptive(), json=record_data, timeout=60)
-    assert response.status_code == 401
+    assert response.status_code == 403

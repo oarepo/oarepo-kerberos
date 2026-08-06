@@ -48,6 +48,22 @@ Go to setup_local_kdc folder
 
 11. kinit user@EXAMPLE.COM or another username created in step 5
 
+### Limitations
+
+#### Multi-leg SPNEGO is not supported
+
+Authentication must complete in a single round trip. The negotiation cannot
+be resumed either — a fresh GSSAPI security context is built per request, and the continuation
+token is discarded unless that context completed — so a request needing a second leg is answered
+with **501 Not Implemented**.
+
+#### A session cookie and a Negotiate token cannot be combined
+
+Successful Kerberos authentication logs the user in, which sets a session cookie. If a client
+then sends that cookie *and* `Authorization: Negotiate ...` on a later request, it is presenting
+two credentials that may name different principals, so the server refuses with **400 Bad
+Request** rather than silently picking one.
+
 
 
 
