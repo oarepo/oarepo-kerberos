@@ -5,9 +5,8 @@ description = "A library for Kerberos integration in OARepo."
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [
+    "oarepo>=14.2.1b11.dev1,<15",
     "flask-gssapi",
-    "click",
-    "flask-login",
 ]
 
 [project.urls]
