@@ -156,7 +156,6 @@ def record_data():
 @pytest.fixture(scope="module")
 def app_config(app_config):
     app_config["GSSAPI_HOSTNAME"] = "localhost"
-    app_config["KERBEROS_ENABLED"] = True
 
     # needed for session test
     # The session-based Kerberos tests ride the login session cookie over plain

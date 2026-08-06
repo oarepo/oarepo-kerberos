@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -47,8 +48,10 @@ class KerberosExt:
         Args:
             app (Flask): The Flask application instance.
         """
-        app.extensions["oarepo-kerberos"] = self
-        if app.config.get("KERBEROS_ENABLED", False):
+        kerberos_enabled = os.environ.get("KRB5_CONFIG") is not None
+        app.config["KERBEROS_ENABLED"] = kerberos_enabled
+        if kerberos_enabled:
             app.extensions["oarepo-gssapi"] = self.gssapi = GSSAPI(app)
+        app.extensions["oarepo-kerberos"] = self
 
         app.cli.add_command(kerberos)
