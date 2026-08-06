@@ -1,0 +1,2 @@
+exclude tests/*
+exclude setup_local_kdc/*

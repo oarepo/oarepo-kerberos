@@ -1,0 +1,51 @@
+[project]
+name = "oarepo-kerberos"
+version = "0.1.0"
+description = "A library for Kerberos integration in OARepo."
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "oarepo>=14.2.1b11.dev1,<15",
+    "flask-gssapi",
+]
+
+[project.urls]
+Homepage = "https://github.com/oarepo/oarepo-kerberos"
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+]
+tests = [
+    "pytest>=7.1.2",
+    "pytest-invenio",
+    "pytest-oarepo",
+    "pytest-flask",
+    "requests-kerberos",
+    "oarepo-model",
+]
+oarepo14 = [
+    "oarepo[rdm,tests]>=14.0.0,<15.0.0",
+]
+
+[project.entry-points."invenio_base.apps"]
+oarepo_kerberos = "oarepo_kerberos.ext:KerberosExt"
+
+[project.entry-points."invenio_base.api_apps"]
+oarepo_kerberos = "oarepo_kerberos.ext:KerberosExt"
+
+[project.entry-points."flask.commands"]
+oarepo_kerberos = "oarepo_kerberos.cli:kerberos"
+
+[project.entry-points."oarepo.auth_providers"]
+oarepo_kerberos = "oarepo_kerberos.provider:KerberosProvider"
+
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/oarepo_kerberos",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

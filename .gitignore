@@ -14,3 +14,8 @@ jsconfig.json
 todo.md
 /requirements-resolved-local.txt
 .DS_Store
+.runner.sh
+.env-services
+tests/flask.keytab
+.ruff.toml
+.mypy.ini
