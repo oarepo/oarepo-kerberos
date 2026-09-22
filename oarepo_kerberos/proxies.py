@@ -1,10 +1,6 @@
-#
-# Copyright (C) 2024 CESNET z.s.p.o.
-#
-# oarepo-kerberos is free software; you can redistribute it and/or
-# modify it under the terms of the MIT License; see LICENSE file for more
-# details.
-#
+# SPDX-FileCopyrightText: 2024 CESNET z.s.p.o
+# SPDX-License-Identifier: MIT
+
 """Proxies for accessing the current OARepo kerberos authentication extension without bringing dependencies."""
 
 from __future__ import annotations
@@ -17,5 +13,5 @@ if TYPE_CHECKING:
 from flask import current_app
 from werkzeug.local import LocalProxy
 
-current_kerberos: KerberosExt = LocalProxy(lambda: current_app.extensions["oarepo-kerberos"])  # type: ignore[assignment]
+current_kerberos: KerberosExt = LocalProxy(lambda: current_app.extensions["oarepo-kerberos"])  # ty: ignore[invalid-assignment]
 """Helper proxy to get the current kerberos authentication extension."""
