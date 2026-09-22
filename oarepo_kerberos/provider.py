@@ -1,10 +1,6 @@
-#
-# Copyright (C) 2024 CESNET z.s.p.o.
-#
-# oarepo-kerberos is free software; you can redistribute it and/or
-# modify it under the terms of the MIT License; see LICENSE file for more
-# details.
-#
+# SPDX-FileCopyrightText: 2024 CESNET z.s.p.o
+# SPDX-License-Identifier: MIT
+
 """Flask extension for kerberos authentication."""
 
 from __future__ import annotations
@@ -12,7 +8,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from flask import current_app, g, request
 from flask_login import current_user
@@ -141,7 +137,7 @@ class KerberosProvider(AuthProvider):
             and "Authorization" not in request.headers
         ):
             challenge = NegotiateAuthentication()
-            response.status_code = challenge.code  # type: ignore[reportAttributeAccessIssue]
+            response.status_code = cast("int", challenge.code)
             response.set_data(challenge.get_body())
             response.headers.update(challenge.get_headers())
             return response
