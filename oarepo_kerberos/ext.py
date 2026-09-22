@@ -48,8 +48,10 @@ class KerberosExt:
         Args:
             app (Flask): The Flask application instance.
         """
-        kerberos_enabled = os.environ.get("KRB5_CONFIG") is not None
-        app.config["KERBEROS_ENABLED"] = kerberos_enabled
+        kerberos_enabled = app.config.get("KERBEROS_ENABLED")
+        if kerberos_enabled is None:
+            kerberos_enabled = bool(os.environ.get("KRB5_KTNAME"))
+
         if kerberos_enabled:
             app.extensions["oarepo-gssapi"] = self.gssapi = GSSAPI(app)
         app.extensions["oarepo-kerberos"] = self
